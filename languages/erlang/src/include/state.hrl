@@ -33,6 +33,7 @@
 
 -record(state,
 	{dict=[],
+	 time=void,
 	 nodes=[],        %% Set of nodes
 	 ether=[]}).      %% Triples: {ReceivingNode,SendingNode,Messages}
 

@@ -47,6 +47,7 @@
 -export([get_scheduler/0,get_scheduler/1]).
 -export([is_recording_actions/0,is_recording_actions/1]).
 -export([small_pids/0,small_pids/1,is_infinitely_fast/1,is_infinitely_fast/0]).
+-export([language/0,language/1]).
 -export([chatter/0,chatter/1]).
 -export([distributed_semantics/0,distributed_semantics/1]).
 -export([sends_are_sefs/0,sends_are_sefs/1]).
@@ -81,13 +82,13 @@ resolve_conf(L) ->
     end,
   Conf1 =
     if ResolvedConf#mce_opts.transitions=:=undefined ->
-	ResolvedConf#mce_opts{transitions=Language:get_transitions_fun()};
+	ResolvedConf#mce_opts{transitions=fun Language:transitions/2};
        true ->
 	ResolvedConf
     end,
   Conf2 =
     if Conf1#mce_opts.commit=:=undefined ->
-	Conf1#mce_opts{commit=Language:get_commit_fun()};
+	Conf1#mce_opts{commit=fun Language:commit/3};
        true ->
 	Conf1
     end,
@@ -361,6 +362,11 @@ chatter() ->
   chatter(get_conf()).
 chatter(Conf) ->
   Conf#mce_opts.chatter.
+
+language() ->
+  language(get_conf()).
+language(Conf) ->
+  Conf#mce_opts.language.
 
 distributed_semantics() ->
   distributed_semantics(get_conf()).

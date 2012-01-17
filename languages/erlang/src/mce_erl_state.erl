@@ -37,6 +37,7 @@
 	 getExecutable/1,setExecutable/2,
 	 getEther/1,setEther/2,
 	 getDict/1,setDict/2,
+	 getTime/1,
 
 	 getNode/1,setNode/2,
 	 getOtherNodes/1,setOtherNodes/2,
@@ -113,6 +114,9 @@ getDict(State) ->
   State#system.dict.
 setDict(Dict,State) ->
   State#system{dict=Dict}.
+
+getTime(State) ->
+  State#system.time.
 
 getNode(State) ->
   (getExecutable(State))#executable.node.

@@ -35,7 +35,6 @@
 -export([initialState/2,initialState/3,
 	 transitions/2,commit/2,commit/3,checkReceive/1,
 	 doStep/2,updProcStatusFromQueue/1,record_action/1]).
--export([get_transitions_fun/0,get_commit_fun/0]).
 
 -include("process.hrl").
 -include("state.hrl").
@@ -166,7 +165,7 @@ allPossibilities(State, Conf) ->
     AllTerminatePossibilities ++
     AllRunPossibilities,
   TimeRestrictedPossibilities =
-    timeRestrict(AllPossibilities, Conf),
+    timeRestrict(State, AllPossibilities, Conf),
   ?LOG("all transitions=~n~p~n",[TimeRestrictedPossibilities]),
   case mce_conf:random(Conf) of
     true ->
@@ -175,13 +174,20 @@ allPossibilities(State, Conf) ->
       TimeRestrictedPossibilities
   end.
 
-timeRestrict(Possibilities, Conf) ->
-  Now =
-    case mce_conf:is_simulation(Conf) of
-      true ->
-	erlang:now();
-      _ ->
-	infinity
+now(State,false) ->
+  State#state.time;
+now(State,true) ->
+  erlang:now().
+
+timeRestrict(State, Possibilities, Conf) ->
+  {RealTime,Now} =
+    case {mce_conf:is_simulation(Conf),mce_conf:language(Conf)} of
+      {false,_} ->
+	{false,infinity};
+      {true,mce_time_erl_opsem} ->
+	{false,now(State,false)};
+      {true,_} ->
+	{true,now(State,true)}
     end,
   {RestrictedPossibilities, FailedPossibleTimers} =
     lists:foldl
@@ -216,12 +222,16 @@ timeRestrict(Possibilities, Conf) ->
       %% that will eventually fire, lets wait until the first one
       %% fires
       {Deadline, Entry} = getFirstProcessToFire(FailedPossibleTimers),
-      {FirstTimerProcess, Others, State} = Entry,
-      WaitTime = timer:now_diff(Deadline, Now) div 1000,      
+      {FirstTimerProcess, Others, _} = Entry,
+      io:format("Deadline=~p Now=~p~n",[Deadline,Now]),
+      WaitTime = timer:now_diff(Deadline, Now) div 1000,
       ?LOG
 	 ("Will wait ~p milliseconds~n;first=~p~n",
 	  [WaitTime,Entry]),
-      timer:sleep(WaitTime),
+      if
+	RealTime -> timer:sleep(WaitTime);
+	true -> ok
+      end,
       [Entry];
      true ->
       if
@@ -676,10 +686,12 @@ putProcess(P, Exec, Conf) ->
 	      P#process{status=blocked, expr=Exec};
 	    {Time, _} ->
 	      Deadline =
-		case mce_conf:is_simulation(Conf) of
-		  true ->
+		case {mce_conf:is_simulation(Conf),mce_conf:language(Conf)} of
+		  {true,mce_time_erl_opsem} ->
+		    milliSecondsToTimeStamp(Time);
+		  {true,_} ->
 		    timeStampPlus(Time, erlang:now());
-		  false -> 
+		  {false,_} -> 
 		    if Time=/=0 -> infinity; true -> 0 end
 		end,
 	      P#process{status={timer, Deadline}, expr=Exec}
@@ -784,8 +796,3 @@ randomise(Bigger) ->
   {Left, Right} = random_partition(Bigger),
   randomise(Left) ++ randomise(Right).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-get_transitions_fun() -> fun mce_erl_opsem:transitions/2.
-
-get_commit_fun() -> fun mce_erl_opsem:commit/3.

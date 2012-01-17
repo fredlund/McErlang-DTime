@@ -33,6 +33,7 @@
 
 -record(system,
 	{executable=none, %% From executable.hrl
+	 time=void,
 	 dict=[],
 	 ether=[]}).
 	 

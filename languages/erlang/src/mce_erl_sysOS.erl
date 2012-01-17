@@ -590,6 +590,7 @@ getNodeById(Nid, State) ->
 setCurrentRunContext(Exec,State)
   when is_record(State,state), is_record(Exec,executable) ->
   #system{dict=State#state.dict,
+	  time=State#state.time,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -598,6 +599,7 @@ setCurrentContext(State)
   when is_record(State,state) ->
   Exec = #executable{otherNodes=State#state.nodes},
   #system{dict=State#state.dict,
+	  time=State#state.time,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -606,6 +608,7 @@ setCurrentNodeContext(Node,RestNodes,State)
   when is_record(State,state) ->
   Exec = #executable{node=Node,otherNodes=RestNodes,process=none},
   #system{dict=State#state.dict,
+	  time=State#state.time,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -615,12 +618,14 @@ mkStateFromCurrentNode(State) ->
   NewNode = Node#node{processes=mce_erl_state:getOtherProcesses(State)},
   Nodes = [NewNode| mce_erl_state:getOtherNodes(State)],
   #state{dict=mce_erl_state:getDict(State),
+	 time=mce_erl_state:getTime(State),
 	 nodes=Nodes,
 	 ether=mce_erl_state:getEther(State)}.
 
 %%% Save state after executing without a node context
 mkStateFromOtherNodes(State) ->
   #state{dict=mce_erl_state:getDict(State),
+	 time=mce_erl_state:getTime(State),
 	 nodes=mce_erl_state:getOtherNodes(State),
 	 ether=mce_erl_state:getEther(State)}.
 
@@ -631,6 +636,7 @@ mkStateFromCurrentExecutableWithProcess(Process, State) ->
   NewNode = Node#node{processes=Processes},
   Nodes = [NewNode| mce_erl_state:getOtherNodes(State)],
   #state{dict=mce_erl_state:getDict(State),
+	 time=mce_erl_state:getTime(State),
 	 nodes=Nodes,
 	 ether=mce_erl_state:getEther(State)}.
 
@@ -643,6 +649,7 @@ mkStateFromCurrentExecutable(State) ->
   Nodes = [NewNode| mce_erl_state:getOtherNodes(State)],
   #state{dict=mce_erl_state:getDict(State),
 	 nodes=Nodes,
+	 time=mce_erl_state:getTime(State),
 	 ether=mce_erl_state:getEther(State)}.
 
 findNode(Node,State) ->

@@ -64,7 +64,12 @@ initialState(NodeName, Expr, Conf) ->
       _ ->
 	[mce_erl_process:makeRunnable(Expr,NodeName,Conf)]
     end,
-  #state{nodes =[#node{name=NodeName,processes=InitialProcesses}]}.
+  Time =
+    case mce_conf:discrete_time(Conf) of
+      true -> {0,0,0};
+      false -> void
+    end,
+  #state{time=Time, nodes =[#node{name=NodeName,processes=InitialProcesses}]}.
 
 %%% Computes all the transitions of a state
 
@@ -83,8 +88,26 @@ transitions(State, Conf) ->
 %%% Commits to a transition
 
 commit(Alternative, Monitor, Conf) ->
+  NewAlternative =
+    case mce_conf:discrete_time(Conf) of
+      true ->
+	case Alternative of
+	  {exec, Exec, State} ->
+	    Process = Exec#executable.process,
+	    case Process#process.status of
+	      {timer,Deadline} ->
+		NewState =
+		  State#state{time=addTimeStamps(State#state.time,Deadline)},
+		{exec,Exec,NewState};
+	      _ ->
+		Alternative
+	    end;
+	  _ -> Alternative
+	end;
+      false -> Alternative
+    end,
   put(mc_monitor, Monitor),
-  (?MODULE):doStep(Alternative, Conf).
+  (?MODULE):doStep(NewAlternative, Conf).
 
 commit(Alternative, Conf) ->
   commit(Alternative, void, Conf).
@@ -174,20 +197,15 @@ allPossibilities(State, Conf) ->
       TimeRestrictedPossibilities
   end.
 
-now(State,false) ->
-  State#state.time;
-now(State,true) ->
-  erlang:now().
-
 timeRestrict(State, Possibilities, Conf) ->
   {RealTime,Now} =
-    case {mce_conf:is_simulation(Conf),mce_conf:language(Conf)} of
+    case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
+      {_,true} ->
+	{false,State#state.time};
       {false,_} ->
 	{false,infinity};
-      {true,mce_time_erl_opsem} ->
-	{false,now(State,false)};
       {true,_} ->
-	{true,now(State,true)}
+	{true,erlang:now()}
     end,
   {RestrictedPossibilities, FailedPossibleTimers} =
     lists:foldl
@@ -223,7 +241,7 @@ timeRestrict(State, Possibilities, Conf) ->
       %% fires
       {Deadline, Entry} = getFirstProcessToFire(FailedPossibleTimers),
       {FirstTimerProcess, Others, _} = Entry,
-      io:format("Deadline=~p Now=~p~n",[Deadline,Now]),
+      %%io:format("Deadline=~p Now=~p~n",[Deadline,Now]),
       WaitTime = timer:now_diff(Deadline, Now) div 1000,
       ?LOG
 	 ("Will wait ~p milliseconds~n;first=~p~n",
@@ -686,11 +704,11 @@ putProcess(P, Exec, Conf) ->
 	      P#process{status=blocked, expr=Exec};
 	    {Time, _} ->
 	      Deadline =
-		case {mce_conf:is_simulation(Conf),mce_conf:language(Conf)} of
-		  {true,mce_time_erl_opsem} ->
+		case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
+		  {_,true} ->
 		    milliSecondsToTimeStamp(Time);
 		  {true,_} ->
-		    timeStampPlus(Time, erlang:now());
+		    timeStampPlus(Time,erlang:now());
 		  {false,_} -> 
 		    if Time=/=0 -> infinity; true -> 0 end
 		end,

@@ -60,7 +60,8 @@
 	 program=undefined,
 	 parent=undefined,
 	 record_actions=undefined,
-	 is_infinitely_fast=undefined,
+	 is_infinitely_fast=undefined, %% Timers infinitely slow?
+	 discrete_time=true,           %% Use a discrete timing model
 	 funinfo=undefined,
 	 save_table=undefined,
 	 debugger=undefined,           %% Default debugger 

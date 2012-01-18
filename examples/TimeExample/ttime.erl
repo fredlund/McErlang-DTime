@@ -1,17 +1,31 @@
 -module(ttime).
+-compile(export_all).
 
 -include("mce_opts.hrl").
 
--export([test/0]).
--export([start/0]).
-
-test() ->
+sim() ->
   mce:start
     (#mce_opts
      {program={?MODULE,start,[]},
-      language=mce_time_erl_opsem,
       is_infinitely_fast=true,
+      discrete_time=true,
       algorithm=mce_alg_simulation,
+      sim_actions=true}).
+
+mc() ->
+  mce:start
+    (#mce_opts
+     {program={?MODULE,start,[]},
+      is_infinitely_fast=true,
+      discrete_time=true}).
+
+debug() ->
+  mce:start
+    (#mce_opts
+     {program={?MODULE,start,[]},
+      is_infinitely_fast=true,
+      discrete_time=true,
+      algorithm=mce_alg_debugger,
       sim_actions=true}).
 
 start() ->

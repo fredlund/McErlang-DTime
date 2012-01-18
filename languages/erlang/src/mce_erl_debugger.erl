@@ -249,7 +249,17 @@ debugger_loop(Stack) ->
       end;
 
     false ->
-      io:format("~nAt stack frame ~p: transitions:~n~n",[get_pos()]),
+      State = getState(Stack),
+      TimePrint = 
+	case {mce_conf:discrete_time(), State=/=void} of
+	  {true,true} ->
+	    io_lib:format(" (time ~p)",[State#state.time]);
+	  _ ->
+	    ""
+	end,
+      io:format
+	("~nAt stack frame ~p~s: transitions:~n~n",
+	 [get_pos(),TimePrint]),
       {Transitions, NewStack, _} = get_transitions(Stack),
       print_alternatives(NewStack, 1, Transitions),
       try readcmd(NewStack) of

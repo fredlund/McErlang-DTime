@@ -38,6 +38,7 @@
 -include("monitor.hrl").
 -include("stackEntry.hrl").
 -include("mce_opts.hrl").
+-include("state.hrl").
 
 -behaviour(mce_behav_algorithm).
 
@@ -114,7 +115,7 @@ run(Stack, Scheduler, Conf) ->
 			depth=stackDepth(Stack) + 1},
 	  NewerStack =
 	    mce_behav_stackOps:push(NewEntry, NewStack),
-	  maybe_print_actions(Actions,NewerStack),
+	  maybe_print_actions(NewSys,Actions,NewerStack),
 	  run(NewerStack, NewSched, Conf);
 	no_transitions ->
 	  %% If the simulation communicating with the external world
@@ -190,13 +191,19 @@ updStack({changed, Received, NewState}, Stack) ->
       depth=Entry#stackEntry.depth+1},
      Stack).
 
-maybe_print_actions(Actions, Stack) ->
+maybe_print_actions(State, Actions, Stack) ->
   case mce_conf:sim_actions() of
     true ->
+      PrePrint = 
+	if State=/=void, State#state.time =/= void ->
+	    io_lib:format("~nActions (time ~p):~n",[State#state.time]);
+	   true -> 
+	    io_lib:format("~nActions:~n",[])
+	end,
       mce_conf:format
 	(normal,
-	 "~nActions:~n~s~n",
-	 [mce_erl_debugger:print_actions(Actions,Stack)]);
+	 "~s~s~n",
+	 [PrePrint,mce_erl_debugger:print_actions(Actions,Stack)]);
     false ->
       ok
   end.

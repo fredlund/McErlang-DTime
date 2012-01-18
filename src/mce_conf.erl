@@ -48,6 +48,7 @@
 -export([is_recording_actions/0,is_recording_actions/1]).
 -export([small_pids/0,small_pids/1,is_infinitely_fast/1,is_infinitely_fast/0]).
 -export([language/0,language/1]).
+-export([discrete_time/0,discrete_time/1]).
 -export([chatter/0,chatter/1]).
 -export([distributed_semantics/0,distributed_semantics/1]).
 -export([sends_are_sefs/0,sends_are_sefs/1]).
@@ -82,13 +83,15 @@ resolve_conf(L) ->
     end,
   Conf1 =
     if ResolvedConf#mce_opts.transitions=:=undefined ->
-	ResolvedConf#mce_opts{transitions=fun Language:transitions/2};
+	ResolvedConf#mce_opts{transitions={Language,transitions}};
+%%	ResolvedConf#mce_opts{transitions=fun Language:transitions/2};
        true ->
 	ResolvedConf
     end,
   Conf2 =
     if Conf1#mce_opts.commit=:=undefined ->
-	Conf1#mce_opts{commit=fun Language:commit/3};
+%%	Conf1#mce_opts{commit=fun Language:commit/3};
+	Conf1#mce_opts{commit={Language,commit}};
        true ->
 	Conf1
     end,
@@ -174,6 +177,7 @@ default_conf() ->
 	    debugger=mce_erl_debugger,
 	    distributed_semantics=false,
 	    is_infinitely_fast=false,
+	    discrete_time=false,
 	    chatter=normal,
 	    rpc=false,
 	    mce_monitor=void,
@@ -367,6 +371,11 @@ language() ->
   language(get_conf()).
 language(Conf) ->
   Conf#mce_opts.language.
+
+discrete_time() ->
+  discrete_time(get_conf()).
+discrete_time(Conf) ->
+  Conf#mce_opts.discrete_time.
 
 distributed_semantics() ->
   distributed_semantics(get_conf()).

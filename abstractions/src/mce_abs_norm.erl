@@ -89,7 +89,3 @@ normalizeState(State) ->
 	    Node#node{processes=lists:sort(Node#node.processes)}
 	end,
 	StateComp#state.nodes))}}.
-
-
-	
-

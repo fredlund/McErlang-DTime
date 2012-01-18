@@ -31,9 +31,22 @@ mcdot() ->
      (mce_result:table(mce:result()),
       fun ({_,SysMon}) ->
 	  State = SysMon#monState.state,
-	  io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
+	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
+	  ""
       end,
-      void)).
+      fun print_actions/1)).
+
+print_actions(Actions) ->
+  "label="++
+  lists:foldr
+    (fun (Action,Rest) ->
+	 if 
+	   Rest=="" ->
+	     io_lib:format("~p",[mce_erl_actions:get_name(Action)]);
+	   true ->
+	     io_lib:format("~s,~p",[Rest,mce_erl_actions:get_name(Action)])
+	 end
+     end, "", Actions).
       
 sectime({_,Seconds,MicroSeconds}) ->
   Seconds + (MicroSeconds/1000000).

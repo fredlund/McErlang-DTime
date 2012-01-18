@@ -1,4 +1,4 @@
--module(ttime).
+-module(ttime2).
 -compile(export_all).
 
 -include("mce_opts.hrl").
@@ -150,34 +150,28 @@ lampsystem() ->
   User = spawn(?MODULE,user,[Lamp]).
 
 user(Lamp) ->
-  sleep(100),
-  Lamp!self(),
   user1(Lamp).
 
 user1(Lamp) ->
+  sleep(100),
+  Lamp!press,
+  sleep(100),
   delay(1000,6000),
   Lamp!press,
-  receive
-    ok -> ok
-  end,
   user1(Lamp).
 
 lamp() ->
-  sleep(100),
-  receive
-    Pid -> lamp1(Pid)
-  end.
+  sleep(50),
+  lamp1().
 
-lamp1(User) ->
+lamp1() ->
   receive
     press ->
-      User!ok,
       PressTime = mce_erl_time:nowRef(),
       mce_erl:probe(low),
       %%mce_erl:apply(io,format,["Press time is ~p~n",[PressTime]]),
       receive
 	press ->
-	  User!ok,
 	  %%mce_erl:apply(io,format,["Now is ~p~n",[mce_erl_time:now()]]),
 	  case
 	    compareTimes_ge
@@ -186,15 +180,14 @@ lamp1(User) ->
 	    true ->
 	      mce_erl:probe(off),
 	      mce_erl_time:forget(PressTime),
-	      lamp1(User);
+	      lamp1();
 	    false ->
 	      mce_erl:probe(bright),
 	      mce_erl_time:forget(PressTime),
 	      receive
 		press ->
-		  User!ok,
 		  mce_erl:probe(off),
-		  lamp1(User)
+		  lamp1()
 	      end
 	  end
       end

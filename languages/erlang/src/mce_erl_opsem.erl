@@ -198,14 +198,14 @@ allPossibilities(State, Conf) ->
   end.
 
 timeRestrict(State, Possibilities, Conf) ->
-  {RealTime,Now} =
+  {RealTime,DiscreteTime,Now} =
     case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
       {_,true} ->
-	{false,State#state.time};
+	{false,true,State#state.time};
       {false,_} ->
-	{false,infinity};
+	{false,false,infinity};
       {true,_} ->
-	{true,erlang:now()}
+	{true,false,erlang:now()}
     end,
   {RestrictedPossibilities, FailedPossibleTimers} =
     lists:foldl
@@ -253,7 +253,7 @@ timeRestrict(State, Possibilities, Conf) ->
       [Entry];
      true ->
       if
-	Now=:=infinity ->
+	(Now=:=infinity) orelse DiscreteTime ->
 	  possibly_strip_timer_transitions(RestrictedPossibilities,Conf);
 	true  ->
 	  RestrictedPossibilities

@@ -34,6 +34,7 @@
 -record(system,
 	{executable=none, %% From executable.hrl
 	 time=void,
+	 clocks=[],
 	 dict=[],
 	 ether=[]}).
 	 

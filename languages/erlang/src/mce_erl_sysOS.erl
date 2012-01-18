@@ -76,7 +76,9 @@
 	 mkStateFromCurrentExecutableWithProcess/2,
 	 mkStateFromCurrentExecutable/1,
 	 sendMsgToPid/3,
-	 addMsgToState/3]).
+	 addMsgToState/3,
+	 addClock/2,
+	 removeClock/2]).
 
 -export([getSignals/1]).
 
@@ -591,6 +593,7 @@ setCurrentRunContext(Exec,State)
   when is_record(State,state), is_record(Exec,executable) ->
   #system{dict=State#state.dict,
 	  time=State#state.time,
+	  clocks=State#state.clocks,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -600,6 +603,7 @@ setCurrentContext(State)
   Exec = #executable{otherNodes=State#state.nodes},
   #system{dict=State#state.dict,
 	  time=State#state.time,
+	  clocks=State#state.clocks,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -609,6 +613,7 @@ setCurrentNodeContext(Node,RestNodes,State)
   Exec = #executable{node=Node,otherNodes=RestNodes,process=none},
   #system{dict=State#state.dict,
 	  time=State#state.time,
+	  clocks=State#state.clocks,
 	  ether=State#state.ether,
 	  executable=Exec}.
 
@@ -619,6 +624,7 @@ mkStateFromCurrentNode(State) ->
   Nodes = [NewNode| mce_erl_state:getOtherNodes(State)],
   #state{dict=mce_erl_state:getDict(State),
 	 time=mce_erl_state:getTime(State),
+	 clocks=mce_erl_state:getClocks(State),
 	 nodes=Nodes,
 	 ether=mce_erl_state:getEther(State)}.
 
@@ -626,6 +632,7 @@ mkStateFromCurrentNode(State) ->
 mkStateFromOtherNodes(State) ->
   #state{dict=mce_erl_state:getDict(State),
 	 time=mce_erl_state:getTime(State),
+	 clocks=mce_erl_state:getClocks(State),
 	 nodes=mce_erl_state:getOtherNodes(State),
 	 ether=mce_erl_state:getEther(State)}.
 
@@ -637,6 +644,7 @@ mkStateFromCurrentExecutableWithProcess(Process, State) ->
   Nodes = [NewNode| mce_erl_state:getOtherNodes(State)],
   #state{dict=mce_erl_state:getDict(State),
 	 time=mce_erl_state:getTime(State),
+	 clocks=mce_erl_state:getClocks(State),
 	 nodes=Nodes,
 	 ether=mce_erl_state:getEther(State)}.
 
@@ -650,6 +658,7 @@ mkStateFromCurrentExecutable(State) ->
   #state{dict=mce_erl_state:getDict(State),
 	 nodes=Nodes,
 	 time=mce_erl_state:getTime(State),
+	 clocks=mce_erl_state:getClocks(State),
 	 ether=mce_erl_state:getEther(State)}.
 
 findNode(Node,State) ->
@@ -955,3 +964,21 @@ getSignals(State) ->
 
 setSignals(Signals, State) ->
   mce_erl_state:setEther(Signals, State).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+addClock(ClockId,State) ->
+  State#system
+    {clocks=addClock(ClockId,State#system.time,State#system.clocks,[])}.
+addClock(ClockId,Time,[],Elements) ->
+  lists:reverse(Elements,[{ClockId,Time}]);
+addClock(ClockId,Time,[Elem={ClockId2,_}|Rest],Elements) ->
+  if 
+    ClockId<ClockId2 ->
+      lists:reverse(Elements,[{ClockId,Time},Elem|Rest]);
+    true ->
+      addClock(ClockId,Time,Rest,[Elem|Elements])
+  end.
+
+removeClock(ClockId,State) ->
+  State#system{clocks=lists:keydelete(ClockId,1,State#system.clocks)}.

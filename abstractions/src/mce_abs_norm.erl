@@ -42,6 +42,8 @@
 -include("../../languages/erlang/src/include/node.hrl").
 -include("../../languages/erlang/src/include/process.hrl").
 
+%%-define(debug,true).
+-include("macros.hrl").
 
 init(_) ->
     {ok,ok}.
@@ -78,10 +80,16 @@ normalizeState(State) ->
     if Now=/=void -> {0,0,0};
        true -> Now
     end,
+  NewClocks =
+    lists:map
+      (fun ({ClockId,Time}) -> {ClockId,minusTimeStamps(Now,Time)} end,
+       StateComp#state.clocks),
+  ?LOG("Clocks was ~p and is ~p~n",[StateComp#state.clocks,NewClocks]),
   State#monState
     {state=
      StateComp#state
      {time=NewNow,
+      clocks=NewClocks,
       nodes=
       lists:sort
       (lists:map
@@ -89,3 +97,17 @@ normalizeState(State) ->
 	    Node#node{processes=lists:sort(Node#node.processes)}
 	end,
 	StateComp#state.nodes))}}.
+
+minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  {Mic,NewS1,NewM1} =
+    if
+      Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
+      S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
+      M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1}
+  end,
+  {Sec,NewNewM1} =
+    if
+      NewS1>=S2 -> {NewS1-S2,NewM1};
+      NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1}
+    end,
+  {NewNewM1-M2,Sec,Mic}.

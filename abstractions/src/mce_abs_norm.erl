@@ -40,6 +40,7 @@
 -include("monState.hrl").
 -include("../../languages/erlang/src/include/state.hrl").
 -include("../../languages/erlang/src/include/node.hrl").
+-include("../../languages/erlang/src/include/process.hrl").
 
 
 init(_) ->
@@ -52,7 +53,6 @@ init(_) ->
 %% @spec ([action()], any())->{[action()], any()}
 abstract_actions(A,AS) ->
     {A,AS}.
-
 
 %% Returns a monState record whose state component is normalized.
 % %-spec(abstract_state/2::(monState(),abstraction())-> ({monState(),abstraction()})).	     
@@ -71,15 +71,25 @@ abstract_state(State,AS) ->
       Other
   end.
 
-
-
 normalizeState(State) ->
   StateComp = State#monState.state,
+  Now = StateComp#state.time,
+  NewNow = 
+    if Now=/=void -> {0,0,0};
+       true -> Now
+    end,
   State#monState
     {state=
      StateComp#state
-     {nodes=
+     {time=NewNow,
+      nodes=
       lists:sort
       (lists:map
-       (fun (Node) -> Node#node{processes=lists:sort(Node#node.processes)} end,
+       (fun (Node) ->
+	    Node#node{processes=lists:sort(Node#node.processes)}
+	end,
 	StateComp#state.nodes))}}.
+
+
+	
+

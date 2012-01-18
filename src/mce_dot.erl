@@ -32,7 +32,8 @@
 -module(mce_dot).
 -language(erlang).
 
--export([from_table/1,from_table/3,
+-export([from_graph/0,from_graph/1,
+	 from_table/1,from_table/3,
 	 from_stack/1,from_stack/3,
 	 from_buchi_automaton/1,from_buchi_automaton/3]).
 
@@ -41,6 +42,11 @@
 pp_action() -> void.
 pp_state() -> void.
 id_fun(T) -> T.
+
+from_graph() ->
+  from_table(mce_result:table(mce:result())).
+from_graph(FileName) ->
+  file:write_file(FileName,from_table(mce_result:table(mce:result()))).
 
 from_table(Table) ->
   from_table(Table, pp_state(), pp_action()).

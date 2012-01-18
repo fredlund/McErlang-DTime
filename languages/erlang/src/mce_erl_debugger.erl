@@ -605,6 +605,8 @@ print_expr(Indent,{Mod,F,Args}) ->
        [print_run_expr(Indent,Mod,F,Args)]);
 print_expr(Indent,{Fun,Args}) ->
   indent(Indent)++io_lib:format("run ~p(~p)",[Fun,Args]);
+print_expr(Indent,Fun) when is_function(Fun) ->
+  indent(Indent)++io_lib:format("run ~p()",[Fun]);
 print_expr(Indent,Expr) ->
   indent(Indent)++io_lib:format("print_expr: strange expression ~p",[Expr]).
 

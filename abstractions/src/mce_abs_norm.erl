@@ -94,9 +94,25 @@ normalizeState(State) ->
       lists:sort
       (lists:map
        (fun (Node) ->
-	    Node#node{processes=lists:sort(Node#node.processes)}
+	    Node#node
+	      {processes=
+	       lists:sort
+	       (lists:map 
+		(fun (P) -> adjust_timers(P,Now)
+		 end, Node#node.processes))}
 	end,
 	StateComp#state.nodes))}}.
+
+adjust_timers(Process,void) ->
+  Process;
+adjust_timers(Process,Now) ->
+  case Process#process.status of
+    {timer,Deadline} ->
+      NewDeadline = minusTimeStamps(Deadline,Now),
+      Process#process{status={timer,NewDeadline}};
+    _ ->
+      Process
+  end.
 
 minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
   {Mic,NewS1,NewM1} =
@@ -111,3 +127,5 @@ minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
       NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1}
     end,
   {NewNewM1-M2,Sec,Mic}.
+
+

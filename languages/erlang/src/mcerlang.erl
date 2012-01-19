@@ -801,7 +801,12 @@ mce_get(Key) ->
   mce_erl_sysOS:get(Key, mce_erl_state:getState()).
 
 nget(Key) ->
-  mce_erl_sysOS:nget(Key, mce_erl_state:getState()).
+  State = mce_erl_state:getState(),
+  Result = mce_erl_sysOS:nget(Key,State),
+  mce_erl_actions:record
+    (mce_erl_actions:mk_api_call
+     (mce_erl_sysOS:self(State),nget,[Key],Result)),
+  Result.
 
 gget(Key) ->
   mce_erl_sysOS:gget(Key, mce_erl_state:getState()).

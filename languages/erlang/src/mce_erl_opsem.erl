@@ -38,6 +38,7 @@
 
 -include("process.hrl").
 -include("state.hrl").
+-include("system.hrl").
 -include("executable.hrl").
 -include("node.hrl").
 -include("mce_opts.hrl").
@@ -97,10 +98,16 @@ commit(Alternative, Monitor, Conf) ->
 	    case Process#process.status of
 	      {timer,Deadline} ->
 		NewState =
-		  State#state{time=addTimeStamps(State#state.time,Deadline)},
+		  case State#state.time of
+		    {_,_,_} ->
+		      case compareTimes_ge(Deadline,State#state.time) of
+			true -> State#state{time=Deadline};
+			false -> State
+		      end;
+		    _ -> State
+		  end,
 		{exec,Exec,NewState};
-	      _ ->
-		Alternative
+	      _ -> Alternative
 	    end;
 	  _ -> Alternative
 	end;
@@ -215,10 +222,8 @@ timeRestrict(State, Possibilities, Conf) ->
 	       Process = Exec#executable.process,
 	       case Process#process.status of
 		 {timer, TimerDeadline} ->
-		   if Now =:= infinity ->
-		       {[Entry| Poss], FailedPoss};
-		      TimerDeadline =:= infinity ->
-		       {Poss, FailedPoss};
+		   if Now =:= infinity -> {[Entry| Poss], FailedPoss};
+		      TimerDeadline =:= infinity -> {Poss, FailedPoss};
 		      true ->
 		       case compareTimes_ge(Now, TimerDeadline)
 		       of
@@ -255,13 +260,13 @@ timeRestrict(State, Possibilities, Conf) ->
      true ->
       if
 	(Now=:=infinity) orelse DiscreteTime ->
-	  possibly_strip_timer_transitions(RestrictedPossibilities,Conf);
+	  possibly_strip_timer_transitions(Now,RestrictedPossibilities,Conf);
 	true  ->
 	  RestrictedPossibilities
       end
   end.
 
-possibly_strip_timer_transitions(Transitions,Conf) ->
+possibly_strip_timer_transitions(Now,Transitions,Conf) ->
   case mce_conf:is_infinitely_fast(Conf) of
     false ->
       Transitions;
@@ -273,18 +278,20 @@ possibly_strip_timer_transitions(Transitions,Conf) ->
 		 {exec, Exec, SavedState} ->
 		   Process = Exec#executable.process,
 		   case Process#process.status of
-		     {timer, TimerDeadline} ->
-		       if 
-			 TimerDeadline=:=0 ->
-			   {[Entry|NT],T};
-			 true ->
-			   {NT,[Entry|T]}
+		     {Timer, TimerDeadline} ->
+		       Permit =
+			 (Now==infinity andalso 
+			  TimerDeadline=:=0)
+			 orelse
+			 (Now=/=infinity andalso
+			  compareTimes_ge(Now, TimerDeadline)),
+		       if
+			 Permit -> {[Entry|NT],T};
+			 true ->{NT,[Entry|T]}
 		       end;
-		     _ ->
-		       {[Entry|NT],T}
+		     _ -> {[Entry|NT],T}
 		   end;
-		 _ ->
-		   {[Entry|NT],T}
+		 _ -> {[Entry|NT],T}
 	       end
 	   end, {[],[]}, Transitions),
       if
@@ -398,10 +405,6 @@ compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->
   M1 > M2
     orelse M1 =:= M2 andalso S1 > S2
     orelse M1 =:= M2 andalso S1 =:= S2 andalso Mic1 >= Mic2.
-
-timeStampPlus(MilliSeconds,T2) ->
-  TimeStamp = milliSecondsToTimeStamp(MilliSeconds),
-  addTimeStamps(TimeStamp,T2).
 
 milliSecondsToTimeStamp(MilliSeconds) ->
   Seconds = MilliSeconds div 1000,
@@ -531,7 +534,7 @@ exceptionReturn(Process,Reason,Conf) ->
 	    (mce_erl_sys:inform(Reason, State));
 	true ->
 	  mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-	    (putProcess(Process,mce_erl:exiting(Reason),Conf),
+	    (putProcess(Process,mce_erl:exiting(Reason),State,Conf),
 	     State)
       end
   end.
@@ -640,7 +643,7 @@ runUserCode1(Innermost,Context,Conf) ->
 	      mce_erl_sysOS:mkStateFromCurrentExecutable(NewS);
 	    true ->
 	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-		(putProcess(P,mce_erl:exiting(normal),Conf),
+		(putProcess(P,mce_erl:exiting(normal),State,Conf),
 		 State)
 	  end;
 	true ->
@@ -649,7 +652,7 @@ runUserCode1(Innermost,Context,Conf) ->
 	  ?LOG("NewValue: ~p ~nNewContext:~n ~p~nNewExec=~p~n",
 	       [NewValue, NewContext, NewExec]),
 	  mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-	    (putProcess(P, NewExec, Conf), State)
+	    (putProcess(P, NewExec, State, Conf), State)
       end
   catch
     Error:Reason ->
@@ -695,7 +698,7 @@ doReceive(Exec, SavedState, Conf) ->
       runUserCode(mce_erl:mk_context({ContFun, []}, Context), Conf)
   end.
 
-putProcess(P, Exec, Conf) ->
+putProcess(P, Exec, State, Conf) ->
   {Innermost, Context} =
     case Exec of
       {?CONTEXTTAG, Value} -> Value;
@@ -712,16 +715,16 @@ putProcess(P, Exec, Conf) ->
 	      Deadline =
 		case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
 		  {_,true} ->
-		    milliSecondsToTimeStamp(Time);
+		    addTimeStamps
+		      (milliSecondsToTimeStamp(Time),State#system.time);
 		  {true,_} ->
-		    timeStampPlus(Time,erlang:now());
+		    addTimeStamps(milliSecondsToTimeStamp(Time),erlang:now());
 		  {false,_} -> 
 		    if Time=/=0 -> infinity; true -> 0 end
 		end,
-	      P#process{status={timer, Deadline}, expr=Exec}
+	      P#process{status={timer,Deadline}, expr=Exec}
 	  end;
-	_ ->
-	  P#process{status=receivable, expr=Exec}
+	_ -> P#process{status=receivable, expr=Exec}
       end;
     {?CHOICETAG, _} ->
       P#process{status=choice, expr=Exec};

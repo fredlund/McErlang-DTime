@@ -150,12 +150,10 @@ lampsystem() ->
   User = spawn(?MODULE,user,[Lamp]).
 
 user(Lamp) ->
+  sleep(100),
   user1(Lamp).
 
 user1(Lamp) ->
-  sleep(100),
-  Lamp!press,
-  sleep(100),
   delay(1000,6000),
   Lamp!press,
   user1(Lamp).

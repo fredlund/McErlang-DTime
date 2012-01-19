@@ -156,7 +156,7 @@ user1(Lamp) ->
   sleep(100),
   Lamp!press,
   sleep(100),
-  delay(1000,6000),
+  delay(1000,2000),
   Lamp!press,
   user1(Lamp).
 
@@ -176,7 +176,7 @@ lamp1() ->
 	  case
 	    compareTimes_ge
 	    (mce_erl_time:now(),
-	     addTimeStamps(milliSecondsToTimeStamp(5000),mce_erl_time:was(PressTime))) of
+	     addTimeStamps(milliSecondsToTimeStamp(2000),mce_erl_time:was(PressTime))) of
 	    true ->
 	      mce_erl:probe(off),
 	      mce_erl_time:forget(PressTime),

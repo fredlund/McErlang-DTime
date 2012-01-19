@@ -1890,7 +1890,7 @@ into the Erlang runtime system
 using the following code fragment:
 \begin{lstlisting}
 Module = 
-  ltl_string2module_and_load
+  ltl_parse:ltl_string2module_and_load
   ("always (P => eventually Q)", 
    ltl_test).
 \end{lstlisting}

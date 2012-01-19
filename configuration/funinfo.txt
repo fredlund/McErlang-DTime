@@ -91,5 +91,15 @@
  {{mce_erl,choice,1},[rcv]},
  {{mce_erl,recv,1},[rcv]},
  {{mce_erl,letexpr,1},[rcv]},
- {{mce_erl,tryexpr,1},[rcv]}
+ {{mce_erl,tryexpr,1},[rcv]},
+ {{mcerlang,nget,0},[snd]},
+ {{mcerlang,nget,1},[snd]},
+ {{mcerlang,nput,2},[snd]},
+ {{mcerlang,nerase,0},[snd]}, 
+ {{mcerlang,nerase,1},[snd]}, 
+ {{mcerlang,gget,0},[snd]},
+ {{mcerlang,gget,1},[snd]},
+ {{mcerlang,gput,2},[snd]},
+ {{mcerlang,gerase,0},[snd]}, 
+ {{mcerlang,gerase,1},[snd]}
 ].

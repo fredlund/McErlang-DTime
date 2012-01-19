@@ -239,18 +239,19 @@ timeRestrict(State, Possibilities, Conf) ->
       %% No process is ready to run, but there are timers enabled
       %% that will eventually fire, lets wait until the first one
       %% fires
-      {Deadline, Entry} = getFirstProcessToFire(FailedPossibleTimers),
-      {FirstTimerProcess, Others, _} = Entry,
-      %%io:format("Deadline=~p Now=~p~n",[Deadline,Now]),
-      WaitTime = timer:now_diff(Deadline, Now) div 1000,
-      ?LOG
-	 ("Will wait ~p milliseconds~n;first=~p~n",
-	  [WaitTime,Entry]),
+      {Deadline,Entries} = getFirstProcessesToFire(FailedPossibleTimers),
       if
-	RealTime -> timer:sleep(WaitTime);
-	true -> ok
+	RealTime ->
+	  [Entry|_] = Entries,
+	  WaitTime = timer:now_diff(Deadline, Now) div 1000,
+	  ?LOG
+	     ("Will wait ~p milliseconds~n;first=~p~n",
+	      [WaitTime,Entry]),
+	  timer:sleep(WaitTime);
+	true ->
+	  ok
       end,
-      [Entry];
+      Entries;
      true ->
       if
 	(Now=:=infinity) orelse DiscreteTime ->
@@ -294,25 +295,30 @@ possibly_strip_timer_transitions(Transitions,Conf) ->
       end
   end.
 
-getFirstProcessToFire(Ps) ->
-  getFirstProcessToFire(Ps,none,none).
+getFirstProcessesToFire(Ps) ->
+  getFirstProcessesToFire(Ps,none,none).
 
-getFirstProcessToFire([],Entry,T) when T=/=none ->
-  {T,Entry};
-getFirstProcessToFire([Entry|Rest],SavedEntry,SavedTime) ->
+getFirstProcessesToFire([],Entries,T) when T=/=none ->
+  {T,Entries};
+getFirstProcessesToFire([Entry|Rest],SavedEntries,SavedTime) ->
   {exec,Exec,SavedState} = Entry,
   Process = Exec#executable.process,
   case Process#process.status of
     {timer,TimerDeadline} ->
       if
 	SavedTime=/=none ->
-	  case compareTimes_ge(TimerDeadline,SavedTime) of
+	  if
+	    SavedTime==TimerDeadline ->
+	      getFirstProcessesToFire(Rest,[Entry|SavedEntries],SavedTime);
 	    true ->
-	      getFirstProcessToFire(Rest,SavedEntry,SavedTime);
-	    false ->
-	      getFirstProcessToFire(Rest,Entry,TimerDeadline)
+	      case compareTimes_ge(TimerDeadline,SavedTime) of
+		true ->
+		  getFirstProcessesToFire(Rest,SavedEntries,SavedTime);
+		false ->
+		  getFirstProcessesToFire(Rest,[Entry],TimerDeadline)
+	      end
 	  end;
-	true -> getFirstProcessToFire(Rest,Entry,TimerDeadline)
+	true -> getFirstProcessesToFire(Rest,[Entry],TimerDeadline)
       end
   end.
 

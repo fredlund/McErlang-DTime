@@ -151,13 +151,9 @@ lampsystem() ->
 
 user(Lamp) ->
   sleep(100),
-  user1(Lamp).
-
-user1(Lamp) ->
-  sleep(100),
-  delay(1000,2000),
+  delay(1000,6000),
   Lamp!press,
-  user1(Lamp).
+  user(Lamp).
 
 lamp() ->
   sleep(50),

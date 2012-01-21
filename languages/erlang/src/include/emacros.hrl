@@ -11,4 +11,6 @@
 -define(LETTAG,'_let_').
 -define(TRYTAG,'_try_').
 -define(CONTEXTTAG,'_context_').
+-define(URGENTTAG,'_urgent_').
+-define(SLOWTAG,'_slow_').
 

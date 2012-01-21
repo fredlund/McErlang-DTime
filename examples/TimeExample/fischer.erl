@@ -143,7 +143,7 @@ start(N,Tick,D,T) ->
 
 idle(Id,Tick,D,T) ->
   case read() of
-    0 -> latest(Tick,D), setting(Id,Tick,D,T);
+    0 -> latest(Tick,D, fun () -> setting(Id,Tick,D,T) end);
     _ -> idle(Id,Tick,D,T) %% A time lock
   end.
 
@@ -182,16 +182,16 @@ sleep(Milliseconds) ->
   after Milliseconds -> ok
   end.
 
-latest(Tick,0) -> ok;
-latest(Tick,Time) ->
+latest(Tick,0,F) -> mce_erl:urgent(), F();
+latest(Tick,Time,F) ->
+  mce_erl:urgent(),
   mce_erl:choice
-    ([fun () -> ok end,
-      fun () -> receive after Tick -> latest(Tick,Time-Tick) end end]).
+    ([fun () -> mce_erl:urgent(), F() end,
+      fun () -> receive after Tick -> mce_erl:urgent(), latest(Tick,Time-Tick,F) end end]).
 
 			    
 		
 	  
   
-
 
  

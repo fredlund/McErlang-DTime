@@ -33,6 +33,7 @@
 
 -export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/1]).
 -export([execStack/2,isTagged/1]).
+-export([mkUrgent/0,mkSlow/0]).
 -include("emacros.hrl").
 
 mkSend(Label, Fun={M,F,A}) ->
@@ -59,6 +60,12 @@ mkTry(F, BodyCont, HandlerCont) ->
     catch
       Error:Reason -> mce_erl_stacks:tryHandler({Error, Reason}, HandlerCont)
     end.
+
+mkUrgent() ->
+  mce_erl:urgent().
+
+mkSlow() ->
+  mce_erl:slow().
 
 tryValue(Value, BodyCont, HandlerCont) ->
     case isTagged(Value) of
@@ -124,6 +131,8 @@ isTagged(T) when is_tuple(T) ->
     {?CHOICETAG,_} -> true;
     {?SENDTAG,_} -> true;
     {?RECVTAG,_} -> true;
+    ?URGENTTAG -> true;
+    ?SLOWTAG -> true;
     _ -> false
   end;
 isTagged(_) ->

@@ -720,40 +720,61 @@ transform_receive(C, Vars, CR) ->
     'receive' ->
       mk_receive_fun(C, Vars, CR);
     'let' ->
-      ?LOG("In let: vars=~p c=~s~n", [Vars, pp(C)]),
-      {NewBody, BodyForms} =
-	transform_receive
-	  (cerl:let_body(C), add_vars(cerl:let_vars(C), Vars), CR),
-      ?LOG("NewBody=~s~n", [pp(NewBody)]),
-      case
-	mce_erl_sef_analysis:has_sef
-	(CR#cRrec.moduleName, cerl:let_arg(C), CR#cRrec.compileRec)
-	of
-	true ->
-	  ?LOG("Has sef...~n", []),
-	  TransformArg =
-	    case cerl:let_vars(C) of
-	      [_] -> cerl:let_arg(C);
-	      _ ->
-		?LOG("let: transform values argument~n  ~s~ninto tuple~n  ~s~n",
-		     [pp(cerl:let_arg(C)),
-		      pp(transform_values_to_tuple(cerl:let_arg(C)))]),
-		transform_values_to_tuple(cerl:let_arg(C))
+      case is_time_action_spec(C) of
+	{true,ActionType,Body} -> 
+	  {NewBody, NewForms} =
+	    transform_receive(cerl:let_body(C), Vars, CR),
+	  ActionCall =
+	    case ActionType of
+	      urgent -> 
+		cerl:c_call
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkUrgent),[]);
+	      slow ->
+		cerl:c_call
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkSlow),[])
 	    end,
-	  {NewArg, ArgForms} =
-	    transform_receive(TransformArg, Vars, CR),
-	  ?LOG("NewArg=~s~n", [pp(NewArg)]),
-	  {LetExpr, NewLetFuns} =
-	    mk_let_expr(C, NewBody, NewArg, Vars, cerl:let_vars(C), CR),
-	  ?LOG("LetExpr=~s~n", [pp(LetExpr)]),
-	  {LetExpr, NewLetFuns ++ ArgForms ++ BodyForms};
+	  {cerl:c_call
+	     (cerl:c_atom(mce_erl_stacks),
+	      cerl:c_atom(mkLet),
+	      [ActionCall,NewBody]),
+	   NewForms};
 	false ->
-	  ?LOG("No sef...~n", []),
-	  {NewArg, ArgForms} =
-	    transform_receive(cerl:let_arg(C), Vars, CR),
-	  ?LOG("NewArg=~s~n", [pp(NewArg)]),
-	  {copy_ann(C,cerl:c_let(cerl:let_vars(C), NewArg, NewBody)),
-	   ArgForms ++ BodyForms}
+	  ?LOG("In let: vars=~p c=~s~n", [Vars, pp(C)]),
+	  {NewBody, BodyForms} =
+	    transform_receive
+	      (cerl:let_body(C), add_vars(cerl:let_vars(C), Vars), CR),
+	  ?LOG("NewBody=~s~n", [pp(NewBody)]),
+	  case
+	    mce_erl_sef_analysis:has_sef
+	    (CR#cRrec.moduleName, cerl:let_arg(C), CR#cRrec.compileRec)
+	  of
+	    true ->
+	      ?LOG("Has sef...~n", []),
+	      TransformArg =
+		case cerl:let_vars(C) of
+		  [_] -> cerl:let_arg(C);
+		  _ ->
+		    ?LOG
+		       ("let: transform values argument~n  ~s~ninto tuple~n  ~s~n",
+			[pp(cerl:let_arg(C)),
+			 pp(transform_values_to_tuple(cerl:let_arg(C)))]),
+		    transform_values_to_tuple(cerl:let_arg(C))
+		end,
+	      {NewArg, ArgForms} =
+		transform_receive(TransformArg, Vars, CR),
+	      ?LOG("NewArg=~s~n", [pp(NewArg)]),
+	      {LetExpr, NewLetFuns} =
+		mk_let_expr(C, NewBody, NewArg, Vars, cerl:let_vars(C), CR),
+	      ?LOG("LetExpr=~s~n", [pp(LetExpr)]),
+	      {LetExpr, NewLetFuns ++ ArgForms ++ BodyForms};
+	    false ->
+	      ?LOG("No sef...~n", []),
+	      {NewArg, ArgForms} =
+		transform_receive(cerl:let_arg(C), Vars, CR),
+	      ?LOG("NewArg=~s~n", [pp(NewArg)]),
+	      {copy_ann(C,cerl:c_let(cerl:let_vars(C), NewArg, NewBody)),
+	       ArgForms ++ BodyForms}
+	  end
       end;
     'try' ->
       ?LOG("try: transform values argument~n  ~s~ninto tuple~n  ~s~n",
@@ -851,6 +872,31 @@ transform_receive(C, Vars, CR) ->
       {C, []}
   end.
   
+is_time_action_spec(C) ->
+  Arg = cerl:let_arg(C),
+  case cerl:type(Arg) of
+    'call' ->
+      Module = cerl:call_module(Arg),
+      Name = cerl:call_name(Arg),
+      Arity = cerl:call_arity(Arg),
+      case
+	cerl:is_c_atom(Module)
+	andalso cerl:is_c_atom(Name)
+	andalso Arity==0
+	andalso cerl:atom_val(Module)=='mce_erl'
+	andalso (cerl:atom_val(Name)=='urgent'
+		 orelse cerl:atom_val(Name)=='slow')
+      of
+	true -> {true,cerl:atom_val(Name),cerl:let_body(C)};
+	false -> false
+      end;
+    _ -> false
+  end.
+
+	  
+	
+
+
 transform_definitions(Definitions,Vars,CR) ->
   lists:foldl
     (fun ({Var,Def},{NewDefs,NewForms}) ->

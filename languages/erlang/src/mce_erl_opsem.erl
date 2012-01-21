@@ -214,17 +214,17 @@ timeRestrict(State, Possibilities, Conf) ->
       {true,_} ->
 	{true,false,erlang:now()}
     end,
-  {RestrictedPossibilities, FailedPossibleTimers} =
+  {RestUrgent,RestSlow,RestBestTimer} =
     lists:foldl
-      (fun (Entry, {Poss, FailedPoss}) ->
+      (fun (Entry, {Urgent,Slow,BestTimer}) ->
 	   case Entry of
 	     {exec, Exec, SavedState} ->
 	       Process = Exec#executable.process,
-	       IsUrgent = is_urgent(Process#process.expr,Conf),
+	       IsUrgentState = is_urgent(Process#process.expr,Conf),
 	       if
-		 IsUrgent ->
-		   io:format
-		     ("~p~nof status ~p is urgent~n",
+		 IsUrgentState ->
+		   ?LOG
+		     ("State ~p~nof status ~p is urgent~n",
 		      [Process#process.expr,Process#process.status]);
 		 true ->
 		   ok
@@ -245,9 +245,11 @@ timeRestrict(State, Possibilities, Conf) ->
 		 _ -> {[Entry| Poss], FailedPoss}
 	       end;
 	     Other ->
-	       {[Entry| Poss], FailedPoss}
+	       if IsUrgent -> {[Entry|Urgent],Slow,[]};
+		  IsSlow -> {Urgent,[Entry|Slow],[]}
+	       end
 	   end
-       end, {[], []}, Possibilities),
+       end, {[],[],[]}, Possibilities),
   if RestrictedPossibilities =:= [],
      FailedPossibleTimers =/= [] ->
       %% No process is ready to run, but there are timers enabled
@@ -278,7 +280,7 @@ timeRestrict(State, Possibilities, Conf) ->
 is_urgent(Expr,Conf) ->
   IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
   {HasSlowTag,HasUrgentTag} =
-    case expr of
+    case Expr of
       {?CONTEXTTAG,{_,[{?URGENTTAG,_}|_]}} ->
 	{false,true};
       {?CONTEXTTAG,{_,[{?SLOWTAG,_}|_]}} ->

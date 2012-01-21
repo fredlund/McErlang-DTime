@@ -15,7 +15,7 @@ mc(N,Tick,D,T) when N>0, is_integer(N) ->
   mce:start
     (#mce_opts
      {program={fischer,start,[N,Tick,D,T]},
-      is_infinitely_fast=true,
+      is_infinitely_fast=false,
       table=mce_table_hashWithActions,
       sends_are_sefs=true,
       monitor={?MODULE,void},

@@ -18,6 +18,7 @@ mc(N,Tick,D,T) when N>0, is_integer(N) ->
       is_infinitely_fast=false,
       table=mce_table_hashWithActions,
       sends_are_sefs=true,
+      shortest=true,
       monitor={?MODULE,void},
       save_table=true,
       discrete_time=true}).

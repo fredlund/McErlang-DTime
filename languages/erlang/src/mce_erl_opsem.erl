@@ -106,6 +106,9 @@ commit(Alternative, Monitor, Conf) ->
 		      end;
 		    _ -> State
 		  end,
+		?LOG
+		  ("Commiting to~n~p~nyields~n~p~n",
+		   [Alternative,NewState]),
 		{exec,Exec,NewState};
 	      _ -> Alternative
 	    end;
@@ -243,7 +246,7 @@ timeRestrict(State, Possibilities, Conf) ->
 			       BestDeadline==TimerDeadline ->
 				 {Urgent,Slow,
 				  {BestDeadline,[Entry|BestTimerEntries]}};
-			       false ->
+			       true ->
 				 case compareTimes_ge(BestDeadline,TimerDeadline)
 				 of
 				   true ->

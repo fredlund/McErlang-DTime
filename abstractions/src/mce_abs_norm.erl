@@ -114,18 +114,27 @@ adjust_timers(Process,Now) ->
       Process
   end.
 
-minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
-  {Mic,NewS1,NewM1} =
-    if
-      Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
-      S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
-      M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1}
-  end,
-  {Sec,NewNewM1} =
-    if
-      NewS1>=S2 -> {NewS1-S2,NewM1};
-      NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1}
-    end,
-  {NewNewM1-M2,Sec,Mic}.
+compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->
+  M1 > M2
+    orelse M1 =:= M2 andalso S1 > S2
+    orelse M1 =:= M2 andalso S1 =:= S2 andalso Mic1 >= Mic2.
+
+minusTimeStamps(T1={M1,S1,Mic1},T2={M2,S2,Mic2}) ->
+  case compareTimes_ge(T2,T1) of
+    true -> {0,0,0};
+    false ->
+      {Mic,NewS1,NewM1} =
+	if
+	  Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
+	  S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
+	  M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1}
+	end,
+      {Sec,NewNewM1} =
+	if
+	  NewS1>=S2 -> {NewS1-S2,NewM1};
+	  NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1}
+	end,
+      {NewNewM1-M2,Sec,Mic}
+  end.
 
 

@@ -214,9 +214,9 @@ timeRestrict(State, Possibilities, Conf) ->
       {true,_} ->
 	{true,false,erlang:now()}
     end,
-  {RestUrgent,RestSlow,RestBestTimer} =
+  {RestUrgent,RestSlow,{RestBestDeadline,RestBestEntries}} =
     lists:foldl
-      (fun (Entry, {Urgent,Slow,BestTimer}) ->
+      (fun (Entry, Acc={Urgent,Slow,TimeEnt={BestDeadline,BestTimerEntries}}) ->
 	   case Entry of
 	     {exec, Exec, SavedState} ->
 	       Process = Exec#executable.process,
@@ -231,35 +231,43 @@ timeRestrict(State, Possibilities, Conf) ->
 	       end,
 	       case Process#process.status of
 		 {timer, TimerDeadline} ->
-		   if Now =:= infinity -> {[Entry| Poss], FailedPoss};
-		      TimerDeadline =:= infinity -> {Poss, FailedPoss};
+		   if Now =:= infinity -> add_entry(Entry, IsUrgentState, Acc);
+		      TimerDeadline =:= infinity -> Acc;
 		      true ->
-		       case compareTimes_ge(Now, TimerDeadline)
-		       of
-			 true ->
-			   {[Entry| Poss], FailedPoss};
+		       case compareTimes_ge(Now, TimerDeadline) of
+			 true -> add_entry(Entry, IsUrgentState, Acc);
 			 false ->
-			   {Poss, [Entry| FailedPoss]}
+			     if
+			       BestDeadline==void ->
+				 {Urgent,Slow,{TimerDeadline,[Entry]}};
+			       BestDeadline==TimerDeadline ->
+				 {Urgent,Slow,
+				  {BestDeadline,[Entry|BestTimerEntries]}};
+			       false ->
+				 case compareTimes_ge(BestDeadline,TimerDeadline)
+				 of
+				   true ->
+				     {Urgent,Slow,{TimerDeadline,[Entry]}};
+				   false ->
+				     Acc
+				 end
+			     end
 		       end
 		   end;
-		 _ -> {[Entry| Poss], FailedPoss}
+		 _ -> add_entry(Entry, IsUrgentState, Acc)
 	       end;
-	     Other ->
-	       if IsUrgent -> {[Entry|Urgent],Slow,[]};
-		  IsSlow -> {Urgent,[Entry|Slow],[]}
-	       end
+	     Other -> {Urgent,[Entry|Slow],TimeEnt}
 	   end
-       end, {[],[],[]}, Possibilities),
-  if RestrictedPossibilities =:= [],
-     FailedPossibleTimers =/= [] ->
+       end, {[],[],{void,[]}}, Possibilities),
+  if
+    RestUrgent==[], RestSlow==[], RestBestEntries=/=[] ->
       %% No process is ready to run, but there are timers enabled
       %% that will eventually fire, lets wait until the first one
       %% fires
-      {Deadline,Entries} = getFirstProcessesToFire(FailedPossibleTimers),
       if
 	RealTime ->
-	  [Entry|_] = Entries,
-	  WaitTime = timer:now_diff(Deadline, Now) div 1000,
+	  [Entry|_] = RestBestEntries,
+	  WaitTime = timer:now_diff(RestBestDeadline, Now) div 1000,
 	  ?LOG
 	     ("Will wait ~p milliseconds~n;first=~p~n",
 	      [WaitTime,Entry]),
@@ -267,15 +275,25 @@ timeRestrict(State, Possibilities, Conf) ->
 	true ->
 	  ok
       end,
-      Entries;
-     true ->
-      if
-	(Now=:=infinity) orelse DiscreteTime ->
-	  possibly_strip_timer_transitions(Now,RestrictedPossibilities,Conf);
-	true  ->
-	  RestrictedPossibilities
-      end
+      RestBestEntries;
+
+    %% There are urgent transitions; don't advance time
+    RestUrgent=/=[] ->
+      RestUrgent++RestSlow;
+
+    %% There are no urgent transitions; time may advance
+    RestUrgent==[] ->
+      RestSlow++RestBestEntries;
+
+    %% No transitions
+    true ->
+      []
   end.
+
+add_entry(Entry, true, {Urgent,Slow,Timers}) ->
+  {[Entry|Urgent],Slow,Timers};
+add_entry(Entry, false, {Urgent,Slow,Timers}) ->
+  {Urgent,[Entry|Slow],Timers}.
 
 is_urgent(Expr,Conf) ->
   IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
@@ -297,69 +315,6 @@ is_urgent(Expr,Conf) ->
       true;
     true ->
       false
-  end.
-
-possibly_strip_timer_transitions(Now,Transitions,Conf) ->
-  case mce_conf:is_infinitely_fast(Conf) of
-    false ->
-      Transitions;
-    true ->
-      {NonTimerTransitions,TimerTransitions} =
-	lists:foldl
-	  (fun (Entry, {NT,T}) ->
-	       case Entry of
-		 {exec, Exec, SavedState} ->
-		   Process = Exec#executable.process,
-		   case Process#process.status of
-		     {Timer, TimerDeadline} ->
-		       Permit =
-			 (Now==infinity andalso 
-			  TimerDeadline=:=0)
-			 orelse
-			 (Now=/=infinity andalso
-			  compareTimes_ge(Now, TimerDeadline)),
-		       if
-			 Permit -> {[Entry|NT],T};
-			 true ->{NT,[Entry|T]}
-		       end;
-		     _ -> {[Entry|NT],T}
-		   end;
-		 _ -> {[Entry|NT],T}
-	       end
-	   end, {[],[]}, Transitions),
-      if
-	NonTimerTransitions=/=[] ->
-	  NonTimerTransitions;
-	true ->
-	  TimerTransitions
-      end
-  end.
-
-getFirstProcessesToFire(Ps) ->
-  getFirstProcessesToFire(Ps,none,none).
-
-getFirstProcessesToFire([],Entries,T) when T=/=none ->
-  {T,Entries};
-getFirstProcessesToFire([Entry|Rest],SavedEntries,SavedTime) ->
-  {exec,Exec,SavedState} = Entry,
-  Process = Exec#executable.process,
-  case Process#process.status of
-    {timer,TimerDeadline} ->
-      if
-	SavedTime=/=none ->
-	  if
-	    SavedTime==TimerDeadline ->
-	      getFirstProcessesToFire(Rest,[Entry|SavedEntries],SavedTime);
-	    true ->
-	      case compareTimes_ge(TimerDeadline,SavedTime) of
-		true ->
-		  getFirstProcessesToFire(Rest,SavedEntries,SavedTime);
-		false ->
-		  getFirstProcessesToFire(Rest,[Entry],TimerDeadline)
-	      end
-	  end;
-	true -> getFirstProcessesToFire(Rest,[Entry],TimerDeadline)
-      end
   end.
 
 allNodeMoves(F,[],_,State) -> [];

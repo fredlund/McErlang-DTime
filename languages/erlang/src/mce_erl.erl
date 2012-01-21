@@ -56,7 +56,7 @@
 -export([void_state/1]).
 -export([compiled_with_mcerlang/1]).
 -export([mcerlang_compiled_caller/1]).
--export([urgent/0,slow/0]).
+-export([urgent/1,slow/1]).
 
 -export([probe_state/1,probe_state/2,del_probe_state/1,get_probe_state/1]).
 -export([has_probe_state/2,get_probe_state/2]).
@@ -286,8 +286,8 @@ is_letexpr(_) -> false.
 match_letexpr_fun(E) -> match(E,fun is_letexpr/1, fun letexpr_fun/1).
 match_letexpr_expr(E) -> match(E, fun is_letexpr/1, fun letexpr_expr/1).
 
-urgent() -> ?URGENTTAG.
-slow() -> ?SLOWTAG.
+urgent(Cont) -> {?URGENTTAG,Cont}.
+slow(Cont) -> {?SLOWTAG,Cont}.
   
 tryexpr(Arg,Body,Handler) -> {?TRYTAG,{Arg,{Body,Handler}}}.
 tryexpr_arg({?TRYTAG,{Arg,_}}) -> Arg.

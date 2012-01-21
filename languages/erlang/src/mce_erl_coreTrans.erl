@@ -728,16 +728,12 @@ transform_receive(C, Vars, CR) ->
 	    case ActionType of
 	      urgent -> 
 		cerl:c_call
-		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkUrgent),[]);
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkUrgent),[NewBody]);
 	      slow ->
 		cerl:c_call
-		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkSlow),[])
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkSlow),[NewBody])
 	    end,
-	  {cerl:c_call
-	     (cerl:c_atom(mce_erl_stacks),
-	      cerl:c_atom(mkLet),
-	      [ActionCall,NewBody]),
-	   NewForms};
+	  {ActionCall,NewForms};
 	false ->
 	  ?LOG("In let: vars=~p c=~s~n", [Vars, pp(C)]),
 	  {NewBody, BodyForms} =

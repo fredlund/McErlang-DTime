@@ -220,6 +220,15 @@ timeRestrict(State, Possibilities, Conf) ->
 	   case Entry of
 	     {exec, Exec, SavedState} ->
 	       Process = Exec#executable.process,
+	       IsUrgent = is_urgent(Process#process.expr,Conf),
+	       if
+		 IsUrgent ->
+		   io:format
+		     ("~p~nof status ~p is urgent~n",
+		      [Process#process.expr,Process#process.status]);
+		 true ->
+		   ok
+	       end,
 	       case Process#process.status of
 		 {timer, TimerDeadline} ->
 		   if Now =:= infinity -> {[Entry| Poss], FailedPoss};
@@ -264,6 +273,28 @@ timeRestrict(State, Possibilities, Conf) ->
 	true  ->
 	  RestrictedPossibilities
       end
+  end.
+
+is_urgent(Expr,Conf) ->
+  IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
+  {HasSlowTag,HasUrgentTag} =
+    case expr of
+      {?CONTEXTTAG,{_,[{?URGENTTAG,_}|_]}} ->
+	{false,true};
+      {?CONTEXTTAG,{_,[{?SLOWTAG,_}|_]}} ->
+	{true,false};
+      _ ->
+	{false,false}
+    end,
+  if 
+    HasSlowTag ->
+      false;
+    HasUrgentTag ->
+      true;
+    IsInfinitelyFast ->
+      true;
+    true ->
+      false
   end.
 
 possibly_strip_timer_transitions(Now,Transitions,Conf) ->
@@ -665,20 +696,20 @@ handleTerminated() ->
   mce_erl_sysOS:mkStateFromCurrentExecutable
     (mce_erl_sys:inform({'EXIT', crashed}, State)).
 
-isTagged({?TRYTAG,_}) ->
-  true;
-isTagged({?LETTAG,_}) ->
-  true;
-isTagged({?CHOICETAG,_}) ->
-  true;
-isTagged({?SENDTAG,_}) ->
-  true;
-isTagged({?EXITINGTAG,_}) ->
-  true;
-isTagged({?RECVTAG,_}) ->
-  true;
-isTagged(_) ->
-  false.
+isTagged({MaybeTag,_}) ->
+  case MaybeTag of
+    ?TRYTAG -> true;
+    ?LETTAG -> true;
+    ?CHOICETAG -> true;
+    ?SENDTAG -> true;
+    ?EXITINGTAG -> true;
+    ?RECVTAG -> true;
+    ?URGENTTAG -> true;
+    ?SLOWTAG -> true;
+    _ -> false
+  end;
+isTagged(_) -> false.
+
 
 doReceive(Exec, SavedState, Conf) ->
   P = Exec#executable.process,

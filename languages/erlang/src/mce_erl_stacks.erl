@@ -33,7 +33,7 @@
 
 -export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/1]).
 -export([execStack/2,isTagged/1]).
--export([mkUrgent/0,mkSlow/0]).
+-export([mkUrgent/1,mkSlow/1]).
 -include("emacros.hrl").
 
 mkSend(Label, Fun={M,F,A}) ->
@@ -61,11 +61,11 @@ mkTry(F, BodyCont, HandlerCont) ->
       Error:Reason -> mce_erl_stacks:tryHandler({Error, Reason}, HandlerCont)
     end.
 
-mkUrgent() ->
-  mce_erl:urgent().
+mkUrgent(Cont) ->
+  mce_erl:urgent(Cont).
 
-mkSlow() ->
-  mce_erl:slow().
+mkSlow(Cont) ->
+  mce_erl:slow(Cont).
 
 tryValue(Value, BodyCont, HandlerCont) ->
     case isTagged(Value) of
@@ -94,6 +94,10 @@ parseStack(Entry={?SENDTAG,_},RestStack) ->
   {Entry,lists:reverse(RestStack)};
 parseStack({?LETTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack]);
+parseStack({?URGENTTAG,Expr},RestStack) ->
+  parseStack(Expr,[{?URGENTTAG,void}|RestStack]);
+parseStack({?SLOWTAG,Expr},RestStack) ->
+  parseStack(Expr,[{?SLOWTAG,void}|RestStack]);
 parseStack({?TRYTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack]).
 
@@ -118,25 +122,30 @@ execStack(Command,[{?TRYTAG,{_,{BodyCont,HandlerCont}}}|Rest]) ->
       tryValue(Value,BodyCont,HandlerCont)
   catch Error:Reason -> tryHandler({Error,Reason,void},HandlerCont)
   end;
+execStack(Command,[{?URGENTTAG,_}|Rest]) ->
+  execStack(Command,Rest);
+execStack(Command,[{?SLOWTAG,_}|Rest]) ->
+  execStack(Command,Rest);
 execStack(Command,OtherTag) ->
   io:format
     ("*** Error: malformed tag in execStack:~n~p~nfor command~n~p~n",
      [OtherTag,Command]),
   throw(bad).
   
-isTagged(T) when is_tuple(T) ->
-  case T of
-    {?TRYTAG,_} -> true;
-    {?LETTAG,_} -> true;
-    {?CHOICETAG,_} -> true;
-    {?SENDTAG,_} -> true;
-    {?RECVTAG,_} -> true;
+isTagged({MaybeTag,_}) ->
+  case MaybeTag of
+    ?TRYTAG -> true;
+    ?LETTAG -> true;
+    ?CHOICETAG -> true;
+    ?SENDTAG -> true;
+    ?EXITINGTAG -> true;
+    ?RECVTAG -> true;
     ?URGENTTAG -> true;
     ?SLOWTAG -> true;
     _ -> false
   end;
-isTagged(_) ->
-  false.
+isTagged(_) -> false.
+
 
     
 

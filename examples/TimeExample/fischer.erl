@@ -61,7 +61,7 @@ latest(Tick,Time,F) ->
   mce_erl:urgent(),
   mce_erl:choice
     ([fun () -> mce_erl:urgent(), F() end,
-      fun () -> receive after Tick -> mce_erl:urgent(), latest(Tick,Time-Tick,F) end end]).
+      fun () -> mce_erl:urgent(), receive after Tick -> latest(Tick,Time-Tick,F) end end]).
 
 			    
 		

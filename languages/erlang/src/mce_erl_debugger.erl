@@ -1169,9 +1169,17 @@ printToFrame(Stack, Pos, N) ->
 
 print_frame(Pos,Stack) ->
   Actions = get_actions(Pos,Stack),
-  io:format("~p: ", [Pos]),
   OldPos = get_pos(),
   upd_pos(Pos),
+  State = getState(Stack),
+  TimePrint = 
+    case {mce_conf:discrete_time(), State=/=void} of
+      {true,true} ->
+	io_lib:format(" (time ~p)",[State#state.time]);
+      _ ->
+	""
+    end,
+  io:format("~p~s: ", [Pos,TimePrint]),
   ?LOG("print_frame(~p)~n",[Pos]),
   io:format("~s~n",[int_print_actions(Actions,Stack,Pos)]),
   upd_pos(OldPos).

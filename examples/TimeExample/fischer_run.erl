@@ -32,6 +32,15 @@ dot(N,Tick,D,T) ->
       void,
       fun print_actions/1)).
 
+dots(N,Tick,D,T) ->
+  mc(N,Tick,D,T),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_stack
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
 print_actions(Actions) ->
   "label=\""++
   lists:foldr

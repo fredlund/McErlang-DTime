@@ -1,12 +1,6 @@
 -module(fischer).
 -compile(export_all).
 
--include("mce_opts.hrl").
--include("stackEntry.hrl").
-
--behaviour(mce_behav_monitor).
-
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Algorithm code
 
@@ -43,10 +37,8 @@ mutex(Id,Tick,D,T) ->
 
 read() ->
   case mcerlang:nget(id) of
-    undefined ->
-      0;
-    N when is_integer(N),N>=0 ->
-      N
+    undefined -> 0;
+    N when is_integer(N),N>=0 -> N
   end.
 
 write(V) ->

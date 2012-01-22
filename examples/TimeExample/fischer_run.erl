@@ -134,13 +134,13 @@ has_exit(Actions) ->
 
 has_probe_with_tag(Tag,Actions) ->
   lists:foldl
-    (fun (Action,Acc) ->
-	 Acc orelse
-	   (mce_erl_actions:is_probe(Action) andalso
-	    case mce_erl_actions:get_probe_label(Action) of
-	      Label={Tag,Id} -> {true,Id};
-	      _ -> false
-	    end)
+    (fun (Action,false) ->
+	 mce_erl_actions:is_probe(Action) andalso
+	   case mce_erl_actions:get_probe_label(Action) of
+	     Label={Tag,Id} -> {true,Id};
+	     _ -> false
+	   end;
+	 (Action,Other) -> Other
      end, false, Actions).
 
 

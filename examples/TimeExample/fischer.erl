@@ -18,7 +18,7 @@ start(N,Tick,D,T) ->
 idle(Id,Tick,D,T) ->
   case read() of
     0 -> latest(Tick,D, fun () -> setting(Id,Tick,D,T) end);
-    _ -> idle(Id,Tick,D,T) %% A time lock
+    _ -> idle(Id,Tick,D,T)
   end.
 
 setting(Id,Tick,D,T) ->
@@ -34,7 +34,12 @@ testing(Id,Tick,D,T) ->
   
 mutex(Id,Tick,D,T) ->
   mce_erl:probe({enter,Id}),
-  mce_erl:pause(fun () -> mce_erl:probe({exit,Id}), write(0), idle(Id,Tick,D,T) end).
+  mce_erl:pause
+    (fun () ->
+	 mce_erl:probe({exit,Id}), 
+	 write(0), 
+	 idle(Id,Tick,D,T)
+     end).
 
 read() ->
   case mcerlang:nget(id) of

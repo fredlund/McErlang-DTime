@@ -116,7 +116,7 @@ lamp() ->
 	    compareTimes_ge
 	    (mce_erl_time:now(),
 	     addTimeStamps
-	       (milliSecondsToTimeStamp(2000),
+	       (milliSecondsToTimeStamp(5),
 		mce_erl_time:was(PressTime))) of
 	    true ->
 	      mce_erl:probe(off),

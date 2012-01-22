@@ -29,8 +29,8 @@ mcdot1() ->
     ("hej.dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
-      fun ({_,SysMon}) ->
-	  State = SysMon#monState.state,
+      fun ({_,_SysMon}) ->
+	  %%State = SysMon#monState.state,
 	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
 	  ""
       end,
@@ -69,8 +69,8 @@ mcdot2() ->
     ("hej.dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
-      fun ({_,SysMon}) ->
-	  State = SysMon#monState.state,
+      fun ({_,_SysMon}) ->
+	  %%State = SysMon#monState.state,
 	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
 	  ""
       end,
@@ -116,7 +116,7 @@ sectime({_,Seconds,MicroSeconds}) ->
 
 start() ->
   Reader = spawn(?MODULE,reader,[]),
-  Writer = spawn(?MODULE,writer,[Reader]).
+  spawn(?MODULE,writer,[Reader]).
 
 reader() ->
   receive
@@ -147,7 +147,7 @@ sleep(Milliseconds) ->
 
 lampsystem() ->		 
   Lamp = spawn(?MODULE,lamp,[]),
-  User = spawn(?MODULE,user,[Lamp]).
+  spawn(?MODULE,user,[Lamp]).
 
 user(Lamp) ->
   sleep(100),

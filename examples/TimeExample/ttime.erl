@@ -29,8 +29,8 @@ mcdot1() ->
     ("hej.dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
-      fun ({_,SysMon}) ->
-	  State = SysMon#monState.state,
+      fun ({_,_SysMon}) ->
+	  %%State = SysMon#monState.state,
 	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
 	  ""
       end,
@@ -69,8 +69,8 @@ mcdot2() ->
     ("hej.dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
-      fun ({_,SysMon}) ->
-	  State = SysMon#monState.state,
+      fun ({_,_SysMon}) ->
+	  %%State = SysMon#monState.state,
 	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
 	  ""
       end,
@@ -116,7 +116,7 @@ sectime({_,Seconds,MicroSeconds}) ->
 
 start() ->
   Reader = spawn(?MODULE,reader,[]),
-  Writer = spawn(?MODULE,writer,[Reader]).
+  spawn(?MODULE,writer,[Reader]).
 
 reader() ->
   receive
@@ -147,54 +147,42 @@ sleep(Milliseconds) ->
 
 lampsystem() ->		 
   Lamp = spawn(?MODULE,lamp,[]),
-  User = spawn(?MODULE,user,[Lamp]).
+  spawn(?MODULE,user,[Lamp]).
 
 user(Lamp) ->
   sleep(100),
-  Lamp!self(),
-  user1(Lamp).
-
-user1(Lamp) ->
   delay(1000,6000),
   Lamp!press,
-  receive
-    ok -> ok
-  end,
-  user1(Lamp).
+  user(Lamp).
 
 lamp() ->
-  sleep(100),
-  receive
-    Pid -> lamp1(Pid)
-  end.
+  sleep(50),
+  lamp1().
 
-lamp1(User) ->
+lamp1() ->
   receive
     press ->
-      User!ok,
       PressTime = mce_erl_time:nowRef(),
       mce_erl:probe(low),
       %%mce_erl:apply(io,format,["Press time is ~p~n",[PressTime]]),
       receive
 	press ->
-	  User!ok,
 	  %%mce_erl:apply(io,format,["Now is ~p~n",[mce_erl_time:now()]]),
 	  case
 	    compareTimes_ge
 	    (mce_erl_time:now(),
-	     addTimeStamps(milliSecondsToTimeStamp(5000),mce_erl_time:was(PressTime))) of
+	     addTimeStamps(milliSecondsToTimeStamp(2000),mce_erl_time:was(PressTime))) of
 	    true ->
 	      mce_erl:probe(off),
 	      mce_erl_time:forget(PressTime),
-	      lamp1(User);
+	      lamp1();
 	    false ->
 	      mce_erl:probe(bright),
 	      mce_erl_time:forget(PressTime),
 	      receive
 		press ->
-		  User!ok,
 		  mce_erl:probe(off),
-		  lamp1(User)
+		  lamp1()
 	      end
 	  end
       end

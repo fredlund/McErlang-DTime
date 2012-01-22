@@ -137,10 +137,10 @@ has_probe_with_tag(Tag,Actions) ->
     (fun (Action,false) ->
 	 mce_erl_actions:is_probe(Action) andalso
 	   case mce_erl_actions:get_probe_label(Action) of
-	     Label={Tag,Id} -> {true,Id};
+	     {Tag,Id} -> {true,Id};
 	     _ -> false
 	   end;
-	 (Action,Other) -> Other
+	 (_Action,Other) -> Other
      end, false, Actions).
 
 

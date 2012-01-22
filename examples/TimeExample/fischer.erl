@@ -53,7 +53,7 @@ sleep(Milliseconds) ->
   after Milliseconds -> ok
   end.
 
-latest(Tick,0,F) -> mce_erl:urgent(), F();
+latest(_Tick,0,F) -> mce_erl:urgent(), F();
 latest(Tick,Time,F) ->
   mce_erl:urgent(),
   mce_erl:choice

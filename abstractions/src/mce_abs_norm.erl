@@ -108,7 +108,11 @@ adjust_timers(Process,void) ->
 adjust_timers(Process,Now) ->
   case Process#process.status of
     {timer,Deadline} ->
-      NewDeadline = minusTimeStamps(Deadline,Now),
+      NewDeadline =
+	case compareTimes_ge(Now,Deadline) of
+	  true -> {0,0,0};
+	  false -> minusTimeStamps(Deadline,Now)
+	end,
       Process#process{status={timer,NewDeadline}};
     _ ->
       Process
@@ -119,22 +123,20 @@ compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->
     orelse M1 =:= M2 andalso S1 > S2
     orelse M1 =:= M2 andalso S1 =:= S2 andalso Mic1 >= Mic2.
 
-minusTimeStamps(T1={M1,S1,Mic1},T2={M2,S2,Mic2}) ->
-  case compareTimes_ge(T2,T1) of
-    true -> {0,0,0};
-    false ->
-      {Mic,NewS1,NewM1} =
-	if
-	  Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
-	  S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
-	  M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1}
-	end,
-      {Sec,NewNewM1} =
-	if
-	  NewS1>=S2 -> {NewS1-S2,NewM1};
-	  NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1}
-	end,
-      {NewNewM1-M2,Sec,Mic}
-  end.
-
+%% The representation of negative timestamps is a bit weird.
+minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  {Mic,NewS1,NewM1} =
+    if
+      Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
+      S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
+      M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1};
+      true -> {Mic1-Mic2,0,0}
+    end,
+  {Sec,NewNewM1} =
+    if
+      NewS1>=S2 -> {NewS1-S2,NewM1};
+      NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1};
+      true -> {NewS1-S2,0}
+    end,
+  {NewNewM1-M2,Sec,Mic}.
 

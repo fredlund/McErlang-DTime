@@ -34,7 +34,7 @@ testing(Id,Tick,D,T) ->
   
 mutex(Id,Tick,D,T) ->
   mce_erl:probe({enter,Id}),
-  mce_erl:pause(fun () -> sleep(D), mce_erl:probe({exit,Id}), write(0), idle(Id,Tick,D,T) end).
+  mce_erl:pause(fun () -> mce_erl:probe({exit,Id}), write(0), idle(Id,Tick,D,T) end).
 
 read() ->
   case mcerlang:nget(id) of

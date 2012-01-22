@@ -208,69 +208,64 @@ allPossibilities(State, Conf) ->
   end.
 
 timeRestrict(State, Possibilities, Conf) ->
-  {RealTime,DiscreteTime,Now} =
+  {RealTime,Now} =
     case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
       {_,true} ->
-	{false,true,State#state.time};
+	{false,State#state.time};
       {false,_} ->
-	{false,false,infinity};
+	{false,infinity};
       {true,_} ->
-	{true,false,erlang:now()}
+	{true,erlang:now()}
     end,
-  {RestUrgent,RestSlow,{RestBestDeadline,RestBestEntries}} =
+  {RestUrgent,RestSlow,{RestMostUrgent,RestTimeEntries}} =
     lists:foldl
-      (fun (Entry, Acc={Urgent,Slow,TimeEnt={BestDeadline,BestTimerEntries}}) ->
+      (fun (Entry,Acc={Urgent,Slow,TimeEnt={MostUrgent,TimerEntries}}) ->
 	   case Entry of
 	     {exec, Exec, SavedState} ->
 	       Process = Exec#executable.process,
 	       IsUrgentState = is_urgent(Process#process.expr,Conf),
-	       if
-		 IsUrgentState ->
-		   ?LOG
-		     ("State ~p~nof status ~p is urgent~n",
-		      [Process#process.expr,Process#process.status]);
-		 true ->
-		   ok
-	       end,
 	       case Process#process.status of
 		 {timer, TimerDeadline} ->
 		   if Now =:= infinity -> add_entry(Entry, IsUrgentState, Acc);
 		      TimerDeadline =:= infinity -> Acc;
 		      true ->
 		       case compareTimes_ge(Now, TimerDeadline) of
-			 true -> add_entry(Entry, IsUrgentState, Acc);
+			 true ->
+			   add_entry(Entry, IsUrgentState, Acc);
+			 false when MostUrgent==void, IsUrgentState ->
+			   {Urgent,Slow,{TimerDeadline,[Entry]}};
+			 false when MostUrgent==void ->
+			   {Urgent,Slow,{void,[Entry|TimerEntries]}};
 			 false ->
-			     if
-			       BestDeadline==void ->
-				 {Urgent,Slow,{TimerDeadline,[Entry]}};
-			       BestDeadline==TimerDeadline ->
-				 {Urgent,Slow,
-				  {BestDeadline,[Entry|BestTimerEntries]}};
-			       true ->
-				 case compareTimes_ge(BestDeadline,TimerDeadline)
-				 of
-				   true ->
-				     {Urgent,Slow,{TimerDeadline,[Entry]}};
-				   false ->
-				     Acc
-				 end
-			     end
+			   case compareTimes_ge(MostUrgent,TimerDeadline) of
+			     true when isUrgentState ->
+			       {Urgent,Slow,
+				{TimerDeadline,
+				 [Entry|
+				  remove_timed_transitions
+				    (TimerDeadline,TimerEntries)]}};
+			     true ->
+			       {Urgent,Slow,
+				{TimerDeadline,[Entry|TimerEntries]}};
+			     false ->
+			       Acc
+			   end
 		       end
 		   end;
 		 _ -> add_entry(Entry, IsUrgentState, Acc)
 	       end;
-	     Other -> {Urgent,[Entry|Slow],TimeEnt}
+	     Other -> {Urgent,[Entry|Slow],TimerEntries}
 	   end
        end, {[],[],{void,[]}}, Possibilities),
   if
-    RestUrgent==[], RestSlow==[], RestBestEntries=/=[] ->
+    RestUrgent==[], RestSlow==[], RestTimeEntries=/=[] ->
       %% No process is ready to run, but there are timers enabled
       %% that will eventually fire, lets wait until the first one
       %% fires
       if
 	RealTime ->
-	  [Entry|_] = RestBestEntries,
-	  WaitTime = timer:now_diff(RestBestDeadline, Now) div 1000,
+	  {Deadline,Entry} = getFirstProcessToFire(RestTimeEntries),
+	  WaitTime = timer:now_diff(Deadline, Now) div 1000,
 	  ?LOG
 	     ("Will wait ~p milliseconds~n;first=~p~n",
 	      [WaitTime,Entry]),
@@ -278,23 +273,39 @@ timeRestrict(State, Possibilities, Conf) ->
 	true ->
 	  ok
       end,
-      RestBestEntries;
-
-    %% There are urgent transitions; don't advance time
-    RestUrgent=/=[] ->
-      RestUrgent++RestSlow;
-
-    %% There are no urgent transitions; time may advance
-    RestUrgent==[] ->
-      RestSlow++RestBestEntries;
+      RestTimeEntries;
 
     %% No transitions
     true ->
-      []
+      RestUrgent++RestSlow++RestTimeEntries
   end.
 
+getFirstProcessToFire(Entries) ->
+  lists:foldl
+    (fun (Entry,Saved) ->
+	 {exec,Exec,_} = Entry,
+	 Process = Exec#executable.process,
+	 {timer,TimerDeadline} = Process#process.status,
+	 case Saved of
+	   void -> {TimerDeadline,Entry};
+	   {Deadline,SavedEntry} ->
+	     case compareTimes_ge(SavedEntry,TimerDeadline) of
+	       true -> {TimerDeadline,Entry};
+	       false -> Saved
+	     end
+	 end
+     end, void, Entries).
+
+remove_timed_transitions(Deadline,Entries) ->
+  lists:filter
+    (fun (Entry) ->
+	 {exec, Exec, _} = Entry,
+	 {timer,TimerDeadline} = (Exec#executable.process)#process.status,
+	 compareTimes_ge(Deadline,TimerDeadline)
+     end, Entries).
+
 add_entry(Entry, true, {Urgent,Slow,Timers}) ->
-  {[Entry|Urgent],Slow,Timers};
+  {[Entry|Urgent],Slow,{{0,0,0},[]}};
 add_entry(Entry, false, {Urgent,Slow,Timers}) ->
   {Urgent,[Entry|Slow],Timers}.
 

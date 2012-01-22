@@ -1,32 +1,34 @@
--module(ttime2).
+-module(lamp).
 -compile(export_all).
 
 -include("mce_opts.hrl").
 -include("monState.hrl").
 -include("state.hrl").
 
-sim1() ->
+sim() ->
   mce:start
     (#mce_opts
-     {program={?MODULE,start,[]},
-      is_infinitely_fast=true,
+     {program={?MODULE,lampsystem,[]},
       discrete_time=true,
+      is_infinitely_fast=true,
+      sends_are_sefs=true,
       algorithm=mce_alg_simulation,
       sim_actions=true}).
 
-mc1() ->
+mc() ->
   mce:start
     (#mce_opts
-     {program={?MODULE,start,[]},
-      is_infinitely_fast=true,
+     {program={?MODULE,lampsystem,[]},
       table=mce_table_hashWithActions,
+      is_infinitely_fast=true,
+      sends_are_sefs=true,
       save_table=true,
       discrete_time=true}).
 
-mcdot1() ->
-  mc1(),
+dot() ->
+  mc(),
   file:write_file
-    ("hej.dot",
+    (atom_to_list(?MODULE)++".dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
       fun ({_,_SysMon}) ->
@@ -36,52 +38,13 @@ mcdot1() ->
       end,
       fun print_actions/1)).
 
-debug1() ->
-  mce:start
-    (#mce_opts
-     {program={?MODULE,start,[]},
-      is_infinitely_fast=true,
-      discrete_time=true,
-      algorithm=mce_alg_debugger,
-      sim_actions=true}).
-
-sim2() ->
+debug() ->
   mce:start
     (#mce_opts
      {program={?MODULE,lampsystem,[]},
       is_infinitely_fast=true,
       discrete_time=true,
-      algorithm=mce_alg_simulation,
-      sim_actions=true}).
-
-mc2() ->
-  mce:start
-    (#mce_opts
-     {program={?MODULE,lampsystem,[]},
-      is_infinitely_fast=true,
-      table=mce_table_hashWithActions,
-      save_table=true,
-      discrete_time=true}).
-
-mcdot2() ->
-  mc2(),
-  file:write_file
-    ("hej.dot",
-     mce_dot:from_table
-     (mce_result:table(mce:result()),
-      fun ({_,_SysMon}) ->
-	  %%State = SysMon#monState.state,
-	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
-	  ""
-      end,
-      fun print_actions/1)).
-
-debug2() ->
-  mce:start
-    (#mce_opts
-     {program={?MODULE,lampsystem,[]},
-      is_infinitely_fast=true,
-      discrete_time=true,
+      sends_are_sefs=true,
       algorithm=mce_alg_debugger,
       sim_actions=true}).
 
@@ -111,78 +74,62 @@ print_action(Action) ->
       end
   end.
 
-sectime({_,Seconds,MicroSeconds}) ->
-  Seconds + (MicroSeconds/1000000).
-
-start() ->
-  Reader = spawn(?MODULE,reader,[]),
-  spawn(?MODULE,writer,[Reader]).
-
-reader() ->
-  receive
-    {X,Sender} ->
-      sleep(1000),
-      Sender!X,
-      reader()
-  end.
-
-writer(Reader) ->
-  delay(100,1000),
-  Reader!{hello,self()},
-  receive X -> X end,
-  sleep(1500),
-  writer(Reader).
-
-delay(_Tick,Max) when Max=<0 ->
-  ok;
-delay(Tick,Max) ->
-  mce_erl:choice
-    ([fun () -> ok end,
-      fun () -> receive after Tick -> delay(Tick,Max-Tick) end end]).
-
-sleep(Milliseconds) ->
-  receive
-  after Milliseconds -> ok
-  end.
-
 lampsystem() ->		 
   Lamp = spawn(?MODULE,lamp,[]),
-  spawn(?MODULE,user,[Lamp]).
+  spawn(?MODULE,user,[Lamp]),
+  mce_erl:urgent(mce_erl:pause(fun () -> ok end)).
 
 user(Lamp) ->
-  sleep(100),
-  delay(1000,6000),
-  Lamp!press,
-  user(Lamp).
+  latest(1,2,5,fun () -> call(Lamp,press), user(Lamp) end).
+
+latest(_Tick,0,F) -> F();
+latest(Tick,Time,F) ->
+  mce_erl:choice
+    ([fun () -> F() end,
+      fun () -> receive after Tick -> latest(Tick,Time-Tick,F) end end]).
+
+latest(Tick,MinDelay,MaxDelay,F) ->
+  receive
+  after MinDelay -> latest(Tick,MaxDelay-MinDelay,F)
+  end.
+
+call(Pid,Msg) ->
+  Pid!{call,Msg,self()},
+  receive
+    {reply,Value} ->
+      Value
+  end.
+
+reply(Caller,Value) ->
+  Caller!{reply,Value}.
 
 lamp() ->
-  sleep(50),
-  lamp1().
-
-lamp1() ->
   receive
-    press ->
+    {call,press,Caller1} ->
+      reply(Caller1,ok),
       PressTime = mce_erl_time:nowRef(),
       mce_erl:probe(low),
-      %%mce_erl:apply(io,format,["Press time is ~p~n",[PressTime]]),
       receive
-	press ->
-	  %%mce_erl:apply(io,format,["Now is ~p~n",[mce_erl_time:now()]]),
+	{call,press,Caller2} ->
+	  reply(Caller2,ok),
 	  case
 	    compareTimes_ge
 	    (mce_erl_time:now(),
-	     addTimeStamps(milliSecondsToTimeStamp(2000),mce_erl_time:was(PressTime))) of
+	     addTimeStamps
+	       (milliSecondsToTimeStamp(2000),
+		mce_erl_time:was(PressTime))) of
 	    true ->
 	      mce_erl:probe(off),
 	      mce_erl_time:forget(PressTime),
-	      lamp1();
+	      lamp();
 	    false ->
 	      mce_erl:probe(bright),
 	      mce_erl_time:forget(PressTime),
 	      receive
-		press ->
+		{call,press,Caller3} ->
+		  reply(Caller3,ok),
 		  mce_erl:probe(off),
-		  lamp1()
+		  lamp()
 	      end
 	  end
       end

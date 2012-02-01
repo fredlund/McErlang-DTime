@@ -80,7 +80,7 @@ waitForStart(Pid) ->
   end.
 
 doStart(Name, Module, Args, ParentPid) ->
-  {State,Timeout} =
+  try 
     case apply(Module, init, [Args]) of
       {ok, AState} ->
 	{AState,infinity};
@@ -88,22 +88,24 @@ doStart(Name, Module, Args, ParentPid) ->
 	{AState,infinity};
       {ok, AState, Time} when is_integer(Time), Time>0 ->
 	{AState,Time}
-    end,
-  ?LOG("~p: going to register name ~p for ~p~n", [?MODULE,Name,self()]),
-  RegisterReply =
-    try register(Name,self()) of _ -> {ok,started}
-    catch _ -> 
-	try whereis(Name) of NamePid -> {error,{already_started,NamePid}}
-	catch _ -> {error,unknown} end
-    end,
-  ParentPid!RegisterReply, 
-  case RegisterReply of
-    {ok, _} -> loop(State, Module, Timeout);
-    _ -> exiting
-  end.
+    end
+  of {State,Timeout} ->
+      ?LOG("~p: going to register name ~p for ~p~n", [?MODULE,Name,self()]),
+      RegisterReply =
+	try register(Name,self()) of _ -> {ok,started}
+	catch _ -> 
+	    try whereis(Name) of NamePid -> {error,{already_started,NamePid}}
+	    catch _ -> {error,unknown} end
+	end,
+      ParentPid!RegisterReply, 
+      case RegisterReply of
+	{ok, _} -> loop(State, Module, Timeout);
+	_ -> exiting
+      end
+  catch _:Reason -> {error,Reason} end.
 
 doStart(Module, Args, ParentPid) ->
-  {State,Timeout} =
+  try
     case apply(Module, init, [Args]) of
       {ok, AState} ->
 	{AState,infinity};
@@ -111,10 +113,12 @@ doStart(Module, Args, ParentPid) ->
 	{AState,infinity};
       {ok, AState, Time} when is_integer(Time), Time>0 ->
 	{AState,Time}
-    end,
-  ParentPid!{ok,started},
-  loop(State, Module, Timeout).
-
+    end
+  of {State,Timeout} ->
+      ParentPid!{ok,started},
+      loop(State, Module, Timeout)
+  catch _:Reason -> {error,Reason} end.
+ 
 loop(State,Module,Timeout) ->
   receive
     Msg ->

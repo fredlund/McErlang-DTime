@@ -99,7 +99,12 @@ parseStack({?URGENTTAG,Expr},RestStack) ->
 parseStack({?SLOWTAG,Expr},RestStack) ->
   parseStack(Expr,[{?SLOWTAG,void}|RestStack]);
 parseStack({?TRYTAG,{Expr,Cont}},RestStack) ->
-  parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack]).
+  parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack]);
+parseStack(Arg1,Arg2) ->
+  io:format
+    ("*** Error: malformed arguments to parseStack:~n  ~p; ~p~n",
+     [Arg1,Arg2]),
+  throw(bad).
 
 execStack(Command,[]) ->
   case Command of

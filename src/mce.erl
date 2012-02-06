@@ -312,7 +312,7 @@ start_running(MonitorPid,UserConf) ->
   mce_conf:put_conf(UserConf),
   mce_conf:format
     (normal,
-     "Starting McErlang model checker version~n\"~s\" ...~n~n",
+     "Starting McErlang-DTime model checker version~n\"~s\" ...~n~n",
      [mcerlang_version()]),
   %% The following should maybe happen in prepare_run(),
   %% but we cannot yet handle the use in mce_alg_combine of

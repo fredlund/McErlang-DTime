@@ -48,6 +48,7 @@ mc() ->
      {program={?MODULE,start,[]},
       is_infinitely_fast=false,
       table=mce_table_hashWithActions,
+      monitor=snd_rcv_mon,
       sends_are_sefs=true,
       shortest=true,
       save_table=true,

@@ -39,8 +39,14 @@
 -export([info/2]).
 
 init(MonitorModule,MonitorArgs) ->
-  {ok,Monitor} = MonitorModule:init(MonitorArgs),
-  {ok,#monitor{module=MonitorModule,contents=Monitor}}.
+  case MonitorModule:init(MonitorArgs) of
+    {ok,Monitor} -> {ok,#monitor{module=MonitorModule,contents=Monitor}};
+    Value ->
+      io:format
+	("*** Error: monitor ~p does not return {ok,InitialState} but ~p~n",
+	 [MonitorModule,Value]),
+      throw(bad)
+  end.
 
 stateChange(State,Monitor,Stack) ->
   MonResult =

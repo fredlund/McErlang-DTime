@@ -38,6 +38,31 @@ dot() ->
       end,
       fun print_actions/1)).
 
+mc2() ->
+  mce:start
+    (#mce_opts
+     {program={?MODULE,lampsystem,[]},
+      table=mce_table_hashWithActions,
+      is_infinitely_fast=true,
+      well_behaved=true,
+      partial_order=true,
+      sends_are_sefs=true,
+      save_table=true,
+      discrete_time=true}).
+
+dot2() ->
+  mc2(),
+  file:write_file
+    (atom_to_list(?MODULE)++".dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      fun ({_,_SysMon}) ->
+	  %%State = SysMon#monState.state,
+	  %%io_lib:format("label=\"~.2f\"",[sectime(State#state.time)])
+	  ""
+      end,
+      fun print_actions/1)).
+
 debug() ->
   mce:start
     (#mce_opts

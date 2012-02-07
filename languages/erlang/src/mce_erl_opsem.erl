@@ -225,7 +225,7 @@ part_sort_actions([Trans|Rest],Decisive,Normal) ->
 	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
 	dead ->
 	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
-	receiveable ->
+	receivable ->
 	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
 	{timer,TimerDeadline} ->
 	  part_sort_actions(Rest,[Trans|Decisive],Normal);
@@ -653,13 +653,13 @@ doStep1(Exec, SavedState, Conf) ->
       handleTerminated()
   end.
 
-doable(runnable) -> true;
-doable(sendable) -> true;
-doable(exiting) -> true;
-doable({timer,_Deadline}) -> false;
-doable(receiveable) -> true;
-doable(dead) -> true;
-doable(_) -> false.
+doable(runnable,_) -> true;
+doable(sendable,_) -> true;
+doable(exiting,_) -> true;
+doable({timer,Deadline},Time) -> compareTimes_ge(Time,Deadline);
+doable(receiveable,_) -> true;
+doable(dead,_) -> true;
+doable(_,_) -> false.
 
 %% To optimise we re-run runnable commands
 doRunChoice(P,Exec,Expr,Context,SavedState,Conf) ->
@@ -671,7 +671,7 @@ doRunChoice(P,Exec,Expr,Context,SavedState,Conf) ->
 	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
 	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
 	  PNew = putProcess(P, NewExpr, State, Conf),
-	  case doable(PNew#process.status) of
+	  case doable(PNew#process.status,State#system.time) of
 	    true ->
 	      NewExec = Exec#executable{process=PNew},
 	      RealState = 
@@ -729,7 +729,7 @@ doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
 	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
 	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
 	  PNew = putProcess(P, NewExpr, State, Conf),
-	  case doable(PNew#process.status) of
+	  case doable(PNew#process.status,State#system.time) of
 	    true ->
 	      NewExec = Exec#executable{process=PNew},
 	      RealState = 

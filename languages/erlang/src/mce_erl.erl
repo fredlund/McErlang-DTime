@@ -36,6 +36,7 @@
 -export([innermost/1,
 	 recv/1,recv_timeout/3,recv_timeout/1,recv_fun/1,is_recv/1,
 	 choice/1,choice/2,choice_alternatives/1,is_choice/1,
+	 was_choice/1,
 	 pause/1,pause/2,pause_fun/1,pause_label/1,is_pause/1,
 	 send_sef/1,send_sef/2,send_sef_fun/1,send_sef_label/1,is_send_sef/1,
 	 exiting/1,is_exiting/1,exiting_reason/1,
@@ -193,9 +194,6 @@ match_choice(E) -> match(E, fun is_choice/1, fun choice_alternatives/1).
 match_choice_label(E) -> match(E, fun is_choice/1, fun choice_label/1).
 
 
-
-
-
 %% @doc Creates a choice statement structure, with 'void' label, from the parameter function clause. <br/>
 %% @end
 %% @spec (any())->{term(),{void,[any()]}}
@@ -286,6 +284,7 @@ is_letexpr(_) -> false.
 match_letexpr_fun(E) -> match(E,fun is_letexpr/1, fun letexpr_fun/1).
 match_letexpr_expr(E) -> match(E, fun is_letexpr/1, fun letexpr_expr/1).
 
+was_choice(Cont) -> {?WASCHOICETAG,Cont}.
 urgent(Cont) -> {?URGENTTAG,Cont}.
 slow(Cont) -> {?SLOWTAG,Cont}.
   

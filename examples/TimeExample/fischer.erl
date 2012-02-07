@@ -11,7 +11,7 @@ start(N,Tick,D,T) ->
 
 idle(Id,Tick,D,T) ->
   case read() of
-    0 -> latest(Tick,D, fun () -> setting(Id,Tick,D,T) end);
+    0 -> latest(Tick,D,fun () -> setting(Id,Tick,D,T) end);
     _ -> idle(Id,Tick,D,T)
   end.
 

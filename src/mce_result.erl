@@ -150,7 +150,7 @@ is_inconclusive(Result) ->
   type(Result)==inconclusive.
 
 inconclusive_reason(Result) ->
-  error_value(error(Result)).
+  error_value(?MODULE:error(Result)).
 
 print_result_type(Result) ->
   case mce_result:type(Result) of

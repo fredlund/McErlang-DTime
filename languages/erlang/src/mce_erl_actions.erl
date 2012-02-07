@@ -36,6 +36,7 @@
 -export([mk_send/3, mk_send/4, mk_probe/3, mk_probe/2, mk_input/4, mk_io/2, mk_recv/2]).
 -export([mk_run/2,mk_run/3,mk_run/4,mk_output/4,mk_died/2,mk_spawn/3]).
 -export([mk_crashing/4,mk_terminated/2,mk_api_call/4,mk_deliver/4]).
+-export([mk_timeout/2]).
 
 -export([type/1]).
 -export([is_send/1,is_probe/1,is_input/1,is_io/1,is_recv/1,is_run/1,is_died/1]).
@@ -308,6 +309,9 @@ get_deliver_pid(Action) ->
 
 get_deliver_msg(Action) ->
   element(4,mce_actions:get_argument(Action)).
+
+mk_timeout(Source,Deadline) ->
+  mce_actions:mk(Source,timeout,Deadline).
 
 %% @private
 record(Action) ->

@@ -5,6 +5,7 @@
 
 -define(RECVTAG,'_recv_').
 -define(CHOICETAG,'_choice_').
+-define(WASCHOICETAG,'_waschoice_').
 -define(PAUSETAG,'_pause_').
 -define(SENDTAG,'_send_').
 -define(EXITINGTAG,'_exiting_').

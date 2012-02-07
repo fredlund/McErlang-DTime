@@ -101,8 +101,10 @@ commit(Alternative, Monitor, Conf) ->
 		  case State#state.time of
 		    {_,_,_} ->
 		      case compareTimes_ge(Deadline,State#state.time) of
-			true -> State#state{time=Deadline};
-			false -> State
+			true -> 
+			  State#state{time=Deadline};
+			false ->
+			  State
 		      end;
 		    _ -> State
 		  end,
@@ -200,12 +202,76 @@ allPossibilities(State, Conf) ->
   TimeRestrictedPossibilities =
     timeRestrict(State, AllPossibilities, Conf),
   ?LOG("all transitions=~n~p~n",[TimeRestrictedPossibilities]),
+
+  %% This is the wrong place to do a partial order restriction,
+  %% since we have to check the looping condition in algorithms.
+  %% But we will test it for now...
+  PartRestricted = partRestrict(TimeRestrictedPossibilities, Conf),
+
   case mce_conf:random(Conf) of
     true ->
-      randomise(TimeRestrictedPossibilities);
+      randomise(PartRestricted);
     _ ->
-      TimeRestrictedPossibilities
+      PartRestricted
   end.
+
+partRestrict(Possibilities, Conf) ->
+  PartRestrict =
+    mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
+  if
+    PartRestrict ->
+      {Decisive,Normal} = part_sort_actions(Possibilities),
+      case Normal of
+	[First|_] -> [First];
+	_ -> Decisive
+      end;
+    true -> Possibilities
+  end.
+
+part_sort_actions(Possibilities) -> part_sort_actions(Possibilities,[],[]).
+part_sort_actions([],Decisive,Normal) -> {Decisive,Normal};
+part_sort_actions([Trans|Rest],Decisive,Normal) ->
+  case Trans of
+    {exec, Exec, SavedState} ->
+      Process = Exec#executable.process,
+      case Process#process.status of
+	runnable ->
+	  %% Wrong handling of choice
+	  case Process#process.expr of
+	    {?CONTEXTTAG,{_,[{?WASCHOICETAG,_}|_]}} ->
+	      part_sort_actions(Rest,[Trans|Decisive],Normal);
+	    _ ->
+	      part_sort_actions(Rest,Decisive,[Trans|Normal])
+	  end;
+	sendable ->
+	  %% We can treat spawn specially
+	  case find_innermost(Process#process.expr) of
+	    {?SENDTAG,{{mcerlang,spawn,_},_}} ->
+	      part_sort_actions(Rest,Decisive,[Trans|Normal]);
+	    Innermost ->
+	      part_sort_actions(Rest,[Trans|Decisive],Normal)
+	  end;
+	exiting ->
+	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
+	dead ->
+	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
+	receiveable ->
+	  part_sort_actions(Rest,Decisive,[Trans|Normal]);
+	{timer,TimerDeadline} ->
+	  part_sort_actions(Rest,[Trans|Decisive],Normal);
+	Other ->
+	  io:format("Strange process status ~p~n",[Process#process.status]),
+	  throw(bad)
+      end;
+    _ -> 
+      io:format("Strange transition ~p~n",[Trans]),
+      throw(bad)
+  end.
+
+find_innermost({?CONTEXTTAG,{Value,_}}) ->
+  Value;
+find_innermost(Value) ->
+  Value.
 
 timeRestrict(State, Possibilities, Conf) ->
   {RealTime,Now} =
@@ -386,7 +452,18 @@ enumerateAllPossibles([P| Rest], Seen, State) ->
       Others = Seen ++ Rest,
       Values =
 	lists:map(fun (LetExp) ->
-		      NewP = P#process{status=runnable, expr=LetExp},
+		      CExp =
+			case LetExp of
+			  {?CONTEXTTAG,{Exp,Cntxt}} ->
+			    {?CONTEXTTAG,
+			     {Exp,
+			      [mce_erl:was_choice(void)|Cntxt]}};
+			  _ ->
+			    mce_erl:mk_context
+			      (LetExp,[mce_erl:was_choice(void)])
+			end,
+		      NewP =
+			P#process{status=runnable, expr=CExp},
 		      {NewP, Others, State}
 		  end,
 		  digOutChoice(P#process.expr)) ++
@@ -562,8 +639,8 @@ doStep1(Exec, SavedState, Conf) ->
       mce_erl_state:setState
 	(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
       doExit(P#process.pid, P#process.expr, SavedState, Conf);
-    {timer, _} ->
-      doRunTimer(P, Exec, SavedState, Conf);
+    {timer, Deadline} ->
+      doRunTimer(P, Deadline, Exec, SavedState, Conf);
     receivable ->
       doReceive(Exec, SavedState, Conf);
     dead ->
@@ -575,13 +652,16 @@ doStep1(Exec, SavedState, Conf) ->
       handleTerminated()
   end.
 
-doRunTimer(P, Exec, SavedState, Conf) ->
+doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
   %% Timer has expired we can just run the code
   {TimeOutCall, Context} = getTimeOutCall(P#process.expr),
   mce_erl_state:setState(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
+  Pid = P#process.pid,
+  mce_erl_actions:record
+    (mce_erl_actions:mk_timeout(Pid,Deadline)),
   mce_erl_actions:record
     (mce_erl_actions:mk_run
-     (P#process.pid,TimeOutCall)),
+     (Pid,TimeOutCall)),
   runUserCode(mce_erl:mk_context(TimeOutCall, Context), Conf).
 
 getTimeOutCall({?RECVTAG,{_,{_Timer,TimeOutCall}}}) ->
@@ -672,6 +752,7 @@ isTagged({MaybeTag,_}) ->
     ?TRYTAG -> true;
     ?LETTAG -> true;
     ?CHOICETAG -> true;
+    ?WASCHOICETAG -> true;
     ?SENDTAG -> true;
     ?EXITINGTAG -> true;
     ?RECVTAG -> true;

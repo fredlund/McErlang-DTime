@@ -94,6 +94,8 @@ parseStack(Entry={?SENDTAG,_},RestStack) ->
   {Entry,lists:reverse(RestStack)};
 parseStack({?LETTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack]);
+parseStack(Entry={?WASCHOICETAG,Expr},RestStack) ->
+  {Entry,lists:reverse(RestStack)};
 parseStack({?URGENTTAG,Expr},RestStack) ->
   parseStack(Expr,[{?URGENTTAG,void}|RestStack]);
 parseStack({?SLOWTAG,Expr},RestStack) ->
@@ -116,7 +118,7 @@ execStack(Command,[]) ->
       apply(Fun,[]);
     _ ->
       io:format
-	("*** Error: malformed command~n~p~nin execStack nwith empty context~n",
+	("*** Error: malformed command~n~p~nin execStack with empty context~n",
 	 [Command]),
       throw(bad)
   end;
@@ -127,6 +129,8 @@ execStack(Command,[{?TRYTAG,{_,{BodyCont,HandlerCont}}}|Rest]) ->
       tryValue(Value,BodyCont,HandlerCont)
   catch Error:Reason -> tryHandler({Error,Reason,void},HandlerCont)
   end;
+execStack(Command,[{?WASCHOICETAG,_}|Rest]) ->
+  execStack(Command,Rest);
 execStack(Command,[{?URGENTTAG,_}|Rest]) ->
   execStack(Command,Rest);
 execStack(Command,[{?SLOWTAG,_}|Rest]) ->
@@ -142,6 +146,7 @@ isTagged({MaybeTag,_}) ->
     ?TRYTAG -> true;
     ?LETTAG -> true;
     ?CHOICETAG -> true;
+    ?WASCHOICETAG -> true;
     ?SENDTAG -> true;
     ?EXITINGTAG -> true;
     ?RECVTAG -> true;

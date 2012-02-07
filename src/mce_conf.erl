@@ -50,6 +50,8 @@
 -export([language/0,language/1]).
 -export([discrete_time/0,discrete_time/1]).
 -export([chatter/0,chatter/1]).
+-export([well_behaved/0,well_behaved/1]).
+-export([partial_order/0,partial_order/1]).
 -export([distributed_semantics/0,distributed_semantics/1]).
 -export([sends_are_sefs/0,sends_are_sefs/1]).
 -export([format/3,format/2]).
@@ -179,6 +181,8 @@ default_conf() ->
 	    is_infinitely_fast=false,
 	    discrete_time=false,
 	    chatter=normal,
+	    well_behaved=false,
+	    partial_order=false,
 	    rpc=false,
 	    mce_monitor=void,
 	    %% funinfo=get(mcErlangDir)++"/configuration/funinfo.txt",
@@ -366,6 +370,16 @@ chatter() ->
   chatter(get_conf()).
 chatter(Conf) ->
   Conf#mce_opts.chatter.
+
+well_behaved() ->
+  well_behaved(get_conf()).
+well_behaved(Conf) ->
+  Conf#mce_opts.well_behaved.
+
+partial_order() ->
+  partial_order(get_conf()).
+partial_order(Conf) ->
+  Conf#mce_opts.partial_order.
 
 language() ->
   language(get_conf()).

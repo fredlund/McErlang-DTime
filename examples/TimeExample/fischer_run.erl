@@ -32,6 +32,29 @@ dot(N,Tick,D,T) ->
       void,
       fun print_actions/1)).
 
+mc2(N,Tick,D,T) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=false,
+      table=mce_table_hashWithActions,
+      sends_are_sefs=true,
+      shortest=true,
+      well_behaved=true,
+      partial_order=true,
+      monitor={?MODULE,void},
+      save_table=true,
+      discrete_time=true}).
+
+dot2(N,Tick,D,T) ->
+  mc2(N,Tick,D,T),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
 dots(N,Tick,D,T) ->
   mc(N,Tick,D,T),
   file:write_file
@@ -43,13 +66,18 @@ dots(N,Tick,D,T) ->
 
 print_actions(Actions) ->
   "label=\""++
-  lists:foldr
-    (fun (Action,Rest) ->
+  lists:foldl
+    (fun (Action,Output) ->
+	 ActionStr = print_action(Action),
 	 if 
-	   Rest=="" ->
-	     io_lib:format("~s",[print_action(Action)]);
+	   ActionStr=="" ->
+	     Output;
+	   Output=="" ->
+	     io_lib:format("~s",[ActionStr]);
+	   Output==[""] ->
+	     io_lib:format("~s",[ActionStr]);
 	   true ->
-	     io_lib:format("~s,~s",[Rest,print_action(Action)])
+	     io_lib:format("~s,~s",[Output,ActionStr])
 	 end
      end, "", Actions)++
     "\"".
@@ -87,6 +115,21 @@ debug(N,Tick,D,T) when N>0, is_integer(N) ->
       table=mce_table_hashWithActions,
       algorithm=mce_alg_debugger,
       sim_actions=true,
+      sends_are_sefs=true,
+      monitor={?MODULE,void},
+      save_table=true,
+      discrete_time=true}).
+
+debug2(N,Tick,D,T) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=true,
+      table=mce_table_hashWithActions,
+      algorithm=mce_alg_debugger,
+      sim_actions=true,
+      well_behaved=true,
+      partial_order=true,
       sends_are_sefs=true,
       monitor={?MODULE,void},
       save_table=true,
@@ -142,6 +185,8 @@ has_probe_with_tag(Tag,Actions) ->
 	   end;
 	 (_Action,Other) -> Other
      end, false, Actions).
+
+
 
 
 			    

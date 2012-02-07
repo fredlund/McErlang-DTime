@@ -97,7 +97,6 @@ run(Stack, Abstraction, Table, Conf) ->
   mce_conf:monitor_protocol(Table,fun num_states/1),
   Depth = stackDepth(Stack),
   {Entry, Rest} = mce_behav_stackOps:pop(Stack),
-  report_path_length(Entry, Depth),
   case skip_long_path(Depth) of
     true -> {ok, {Table, Abstraction}};
     false ->
@@ -117,6 +116,7 @@ run(Stack, Abstraction, Table, Conf) ->
 	    {exists, Abstraction1, Table1} ->
 	      {ok, {Table1, Abstraction1}};
 	    {new, AbsState, AbsActions, Abstraction1, Table1} ->
+	      report_path_length(AbsState, Depth),
 	      Table2 =
 		if NStates =:= 0 ->
 		    mce_behav_tableOps:set_initial_state(AbsState, Table1);
@@ -232,7 +232,7 @@ skip_long_path(Depth) ->
   end.
 
 %% Report on path length
-report_path_length(Entry, Depth) ->
+report_path_length(State, Depth) ->
   if Depth rem 500 =:= 0, Depth > 0 ->
       Report =
 	case get(path_depth) of
@@ -251,7 +251,7 @@ report_path_length(Entry, Depth) ->
       ok
   end,
   if Depth rem 20000 =:= 0, Depth > 0 ->
-      mce_conf:format(normal,"State:~n  ~p~n", [Entry]);
+      mce_conf:format(normal,"State:~n  ~p~n", [State]);
      true ->
       ok
   end.

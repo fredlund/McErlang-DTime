@@ -55,6 +55,8 @@
 	 sends_are_sefs,               %% Context-switch on send actions
 	 chatter=undefined,            %% Level of verbosity
 	 saved_stack=undefined,
+	 well_behaved=false,
+	 partial_order=false,
 	 time_limit=undefined,         %% Time limit for verification run
 	                               %% in seconds
 	 program=undefined,

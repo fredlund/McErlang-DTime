@@ -251,8 +251,8 @@ spawn_internal(Node, Fun, Args) ->
   end.
 
 apply(Module,Function,Args) ->
-	?call_fun(mce_apply(Module,Function,Args),
-			  erlang:apply(Module,Function,Args)).
+  ?call_fun(mce_apply(Module,Function,Args),
+	    erlang:apply(Module,Function,Args)).
 mce_apply(Module,Function,Args) ->
   {NewModule,NewFunction} = mce_erl_compile_info:map_fun(Module,Function,Args),
   erlang:apply(NewModule,NewFunction,Args).

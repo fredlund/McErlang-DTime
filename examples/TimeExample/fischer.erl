@@ -7,14 +7,17 @@
 start(N,Tick,D,T) ->
   mcerlang:nput(id,0),
   lists:foreach
-    (fun (Id) -> spawn(?MODULE,idle,[Id,Tick,D,T]) end,
+    (fun (Id) -> spawn(?MODULE,set,[Id,Tick,D,T]) end,
      lists:seq(1,N)).
 
 idle(Id,Tick,D,T) ->
   case read() of
-    0 -> latest(Tick,D,fun () -> setting(Id,Tick,D,T) end);
+    0 -> set(Id,Tick,D,T);
     _ -> idle(Id,Tick,D,T)
   end.
+
+set(Id,Tick,D,T) ->
+  latest(Tick,D,{?MODULE,setting,[Id,Tick,D,T]}).
 
 setting(Id,Tick,D,T) ->
   write(Id),
@@ -24,18 +27,15 @@ setting(Id,Tick,D,T) ->
 testing(Id,Tick,D,T) ->
   case read() of
     Id -> mutex(Id,Tick,D,T);
-    0 -> latest(Tick,D,fun () -> setting(Id,Tick,D,T) end);
-    N -> idle(Id,Tick,D,T)
+    0 -> set(Id,Tick,D,T);
+    _ -> idle(Id,Tick,D,T)
   end.
   
 mutex(Id,Tick,D,T) ->
   mce_erl:probe({enter,Id}),
-  mce_erl:pause
-    (fun () ->
-	 mce_erl:probe({exit,Id}), 
-	 write(0), 
-	 idle(Id,Tick,D,T)
-     end).
+  write(0), 
+  mce_erl:probe({exit,Id}), 
+  set(Id,Tick,D,T).
 
 read() ->
   case mcerlang:nget(id) of
@@ -54,12 +54,14 @@ sleep(Milliseconds) ->
   after Milliseconds -> ok
   end.
 
-latest(_Tick,0,F) -> mce_erl:urgent(), F();
-latest(Tick,Time,F) ->
+latest(_Tick,0,{M,F,Args}) ->
+  mce_erl:urgent(), 
+  apply(M,F,Args);
+latest(Tick,Time,Fun={M,F,Args}) ->
   mce_erl:urgent(),
   mce_erl:choice
-    ([fun () -> mce_erl:urgent(), F() end,
-      fun () -> mce_erl:urgent(), receive after Tick -> latest(Tick,Time-Tick,F) end end]).
+    ([fun () -> mce_erl:urgent(), apply(M,F,Args) end,
+      fun () -> mce_erl:urgent(), receive after Tick -> latest(Tick,Time-Tick,Fun) end end]).
 
 
 			    

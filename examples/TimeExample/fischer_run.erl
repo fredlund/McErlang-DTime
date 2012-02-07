@@ -46,8 +46,37 @@ mc2(N,Tick,D,T) when N>0, is_integer(N) ->
       save_table=true,
       discrete_time=true}).
 
+mc2b(N,Tick,D,T) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=false,
+      table={mce_table_bitHash,[10000000]},
+      sends_are_sefs=true,
+      well_behaved=true,
+      partial_order=true,
+      monitor={?MODULE,void},
+      save_table=true,
+      discrete_time=true}).
+
 dot2(N,Tick,D,T) ->
   mc2(N,Tick,D,T),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
+dot_space(N,Tick,D,T) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=false,
+      table=mce_table_hashWithActions,
+      sends_are_sefs=true,
+      save_table=true,
+      discrete_time=true}),
   file:write_file
     ("hej.dot",
      mce_dot:from_table
@@ -90,6 +119,12 @@ dots2(N,Tick,D,T) ->
      (mce_result:stack(mce:result()),
       void,
       fun print_actions/1)).
+
+print_states() ->
+  Result = mce:result(),
+  Table = mce_result:table(Result),
+  {ok, States} = mce_behav_tableOps:states_to_list(Table),
+  lists:foreach(fun (State) -> io:format("~p~n",[State]) end, States).
 
 print_actions(Actions) ->
   "label=\""++

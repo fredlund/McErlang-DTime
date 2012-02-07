@@ -207,7 +207,6 @@ part_sort_actions([Trans|Rest],Decisive,Normal) ->
       Process = Exec#executable.process,
       case Process#process.status of
 	runnable ->
-	  %% Wrong handling of choice
 	  case Process#process.expr of
 	    {?CONTEXTTAG,{_,[{?WASCHOICETAG,_}|_]}} ->
 	      part_sort_actions(Rest,[Trans|Decisive],Normal);

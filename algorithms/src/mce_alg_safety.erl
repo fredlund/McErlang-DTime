@@ -280,6 +280,7 @@ add_state_count(Result) ->
 
 %% Remember shortest path
 remember_shortest_path(Depth,Result) ->
+  io:format("Setting shortest path to ~p~n",[Depth]),
   put(shortest,{Depth,Result}).
 
 %% Set a limiter on the maximum length of paths explored

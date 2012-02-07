@@ -622,11 +622,15 @@ doStep1(Exec, SavedState, Conf) ->
   case P#process.status of
     runnable ->
       mce_erl_state:setState
-	(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
+	(mce_erl_sysOS:setCurrentRunContext(Exec,SavedState)),
       mce_erl_actions:record
 	(mce_erl_actions:mk_run
 	 (P#process.pid,P#process.expr)),
-      runUserCode(P#process.expr, Conf);
+      case P#process.expr of
+	{?CONTEXTTAG,{Expr,[{?WASCHOICETAG,_}|Context]}} ->
+	  doRunChoice(P,Exec,Expr,Context,SavedState,Conf);
+	_ -> runUserCode(P#process.expr, Conf)
+      end;
     sendable ->
       mce_erl_state:setState
 	(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
@@ -648,6 +652,46 @@ doStep1(Exec, SavedState, Conf) ->
       handleTerminated()
   end.
 
+doable(runnable) -> true;
+doable(sendable) -> true;
+doable(exiting) -> true;
+doable({timer,_Deadline}) -> false;
+doable(receiveable) -> true;
+doable(dead) -> true;
+doable(_) -> false.
+
+%% To optimise we re-run runnable commands
+doRunChoice(P,Exec,Expr,Context,SavedState,Conf) ->
+  try mce_erl_stacks:execStack(Expr,Context) of
+      Value ->
+      State = mce_erl_state:getState(),
+      case mce_erl_stacks:isTagged(Value) of
+	true ->
+	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
+	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
+	  PNew = putProcess(P, NewExpr, State, Conf),
+	  case doable(PNew#process.status) of
+	    true ->
+	      NewExec = Exec#executable{process=PNew},
+	      RealState = 
+		#state{dict=State#system.dict,
+		       time=State#system.time,
+		       clocks=State#system.clocks,
+		       ether=State#system.ether},
+	      doStep1(NewExec,RealState,Conf);
+	    false -> 
+	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
+		(putProcess(PNew,NewExpr,State,Conf), State)
+	  end;
+	false -> 
+	  exiting(P,Value,State,Conf)
+      end
+  catch
+    Error:Reason ->
+      maybe_notice_exit(Error, Reason, Conf),
+      throw({user, Error, Reason})
+  end.
+	  
 doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
   Pid = P#process.pid,
   Time = SavedState#state.time,
@@ -676,7 +720,35 @@ doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
   mce_erl_actions:record
     (mce_erl_actions:mk_run
      (Pid,TimeOutCall)),
-  runUserCode(mce_erl:mk_context(TimeOutCall,Context), Conf).
+  try mce_erl_stacks:execStack(TimeOutCall,Context) of
+      Value ->
+      State = mce_erl_state:getState(),
+      case mce_erl_stacks:isTagged(Value) of
+	true ->
+	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
+	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
+	  PNew = putProcess(P, NewExpr, State, Conf),
+	  case doable(PNew#process.status) of
+	    true ->
+	      NewExec = Exec#executable{process=PNew},
+	      RealState = 
+		#state{dict=State#system.dict,
+		       time=State#system.time,
+		       clocks=State#system.clocks,
+		       ether=State#system.ether},
+	      doStep1(NewExec,RealState,Conf);
+	    false -> 
+	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
+		(putProcess(PNew,NewExpr,State,Conf), State)
+	  end;
+	false -> 
+	  exiting(P,Value,State,Conf)
+      end
+  catch
+    Error:Reason ->
+      maybe_notice_exit(Error, Reason, Conf),
+      throw({user, Error, Reason})
+  end.
 
 getTimeOutCall({?RECVTAG,{_,{_Timer,TimeOutCall}}}) ->
   {TimeOutCall,[]};
@@ -725,23 +797,7 @@ runUserCode1(Innermost,Context,Conf) ->
       P = mce_erl_state:getProcess(State),
       case mce_erl_stacks:isTagged(Value) of
 	false ->
-	  case mce_conf:sends_are_sefs() of
-	    false ->
-	      ?LOG("Process ~p terminates with value~n~p~n",
-		   [P#process.pid, Value]),
-	      mce_erl_actions:record
-		(mce_erl_actions:mk_terminated
-		 (P#process.pid,Value)),
-	      NewS = mce_erl_sys:inform(normal, State),
-	      %% Note that we have to recompute links and pid map
-	      %% here because it can potentially change in
-	      %% mce__erl_sys:inform.
-	      mce_erl_sysOS:mkStateFromCurrentExecutable(NewS);
-	    true ->
-	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-		(putProcess(P,mce_erl:exiting(normal),State,Conf),
-		 State)
-	  end;
+	  exiting(P,Value,State,Conf);
 	true ->
 	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
 	  NewExec = mce_erl:mk_context(NewValue, NewContext),
@@ -754,6 +810,25 @@ runUserCode1(Innermost,Context,Conf) ->
     Error:Reason ->
       maybe_notice_exit(Error, Reason, Conf),
       throw({user, Error, Reason})
+  end.
+
+exiting(P,Value,State,Conf) ->
+  case mce_conf:sends_are_sefs() of
+    false ->
+      ?LOG("Process ~p terminates with value~n~p~n",
+	   [P#process.pid, Value]),
+      mce_erl_actions:record
+	(mce_erl_actions:mk_terminated
+	   (P#process.pid,Value)),
+      NewS = mce_erl_sys:inform(normal, State),
+      %% Note that we have to recompute links and pid map
+      %% here because it can potentially change in
+      %% mce__erl_sys:inform.
+      mce_erl_sysOS:mkStateFromCurrentExecutable(NewS);
+    true ->
+      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
+	(putProcess(P,mce_erl:exiting(normal),State,Conf),
+	 State)
   end.
 
 handleTerminated() ->

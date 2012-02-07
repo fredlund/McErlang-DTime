@@ -5,6 +5,7 @@
 %%% Algorithm code
 
 start(N,Tick,D,T) ->
+  mcerlang:nput(id,0),
   lists:foreach
     (fun (Id) -> spawn(?MODULE,idle,[Id,Tick,D,T]) end,
      lists:seq(1,N)).
@@ -37,7 +38,6 @@ mutex(Id,Tick,D,T) ->
 
 read() ->
   case mcerlang:nget(id) of
-    undefined -> 0;
     N when is_integer(N),N>=0 -> N
   end.
 

@@ -7,7 +7,7 @@
 start(N,Tick,D,T) ->
   mcerlang:nput(id,0),
   lists:foreach
-    (fun (Id) -> spawn(?MODULE,set,[Id,Tick,D,T]) end,
+    (fun (Id) -> spawn(?MODULE,idle,[Id,Tick,D,T]) end,
      lists:seq(1,N)).
 
 idle(Id,Tick,D,T) ->
@@ -27,7 +27,6 @@ setting(Id,Tick,D,T) ->
 testing(Id,Tick,D,T) ->
   case read() of
     Id -> mutex(Id,Tick,D,T);
-    0 -> set(Id,Tick,D,T);
     _ -> idle(Id,Tick,D,T)
   end.
   
@@ -35,7 +34,7 @@ mutex(Id,Tick,D,T) ->
   mce_erl:probe({enter,Id}),
   write(0), 
   mce_erl:probe({exit,Id}), 
-  set(Id,Tick,D,T).
+  idle(Id,Tick,D,T).
 
 read() ->
   case mcerlang:nget(id) of

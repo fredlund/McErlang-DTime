@@ -274,7 +274,7 @@ timeRestrict(State, Possibilities, Conf) ->
 			   {Urgent,Slow,{void,[Entry|TimerEntries]}};
 			 false ->
 			   case compareTimes_ge(MostUrgent,TimerDeadline) of
-			     true when isUrgentState ->
+			     true when IsUrgentState ->
 			       {Urgent,Slow,
 				{TimerDeadline,
 				 [Entry|
@@ -337,7 +337,8 @@ remove_timed_transitions(Deadline,Entries) ->
     (fun (Entry) ->
 	 {exec, Exec, _} = Entry,
 	 {timer,TimerDeadline} = (Exec#executable.process)#process.status,
-	 compareTimes_ge(Deadline,TimerDeadline)
+	 Result = compareTimes_ge(Deadline,TimerDeadline),
+	 Result
      end, Entries).
 
 add_entry(Entry, true, {Urgent,Slow,Timers}) ->

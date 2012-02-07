@@ -89,37 +89,8 @@ transitions(State, Conf) ->
 %%% Commits to a transition
 
 commit(Alternative, Monitor, Conf) ->
-  NewAlternative =
-    case mce_conf:discrete_time(Conf) of
-      true ->
-	case Alternative of
-	  {exec, Exec, State} ->
-	    Process = Exec#executable.process,
-	    case Process#process.status of
-	      {timer,Deadline} ->
-		NewState =
-		  case State#state.time of
-		    {_,_,_} ->
-		      case compareTimes_ge(Deadline,State#state.time) of
-			true -> 
-			  State#state{time=Deadline};
-			false ->
-			  State
-		      end;
-		    _ -> State
-		  end,
-		?LOG
-		  ("Commiting to~n~p~nyields~n~p~n",
-		   [Alternative,NewState]),
-		{exec,Exec,NewState};
-	      _ -> Alternative
-	    end;
-	  _ -> Alternative
-	end;
-      false -> Alternative
-    end,
   put(mc_monitor, Monitor),
-  (?MODULE):doStep(NewAlternative, Conf).
+  (?MODULE):doStep(Alternative, Conf).
 
 commit(Alternative, Conf) ->
   commit(Alternative, void, Conf).
@@ -379,10 +350,8 @@ is_urgent(Expr,Conf) ->
   IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
   {HasSlowTag,HasUrgentTag} =
     case Expr of
-      {?CONTEXTTAG,{_,[{?URGENTTAG,_}|_]}} ->
-	{false,true};
-      {?CONTEXTTAG,{_,[{?SLOWTAG,_}|_]}} ->
-	{true,false};
+      {?CONTEXTTAG,{_,Context}} ->
+	check_context_for_urgency_tag(Context);
       _ ->
 	{false,false}
     end,
@@ -395,6 +364,18 @@ is_urgent(Expr,Conf) ->
       true;
     true ->
       false
+  end.
+
+check_context_for_urgency_tag(Context) ->
+  case Context of
+    [{?URGENTTAG,_}|_] ->
+      {false,true};
+    [{?SLOWTAG,_}|_] ->
+      {true,false};
+    [{?WASCHOICETAG,_}|RestContext] -> 
+      check_context_for_urgency_tag(RestContext);
+    _ ->
+      {false,false}
   end.
 
 allNodeMoves(F,[],_,State) -> [];
@@ -499,6 +480,22 @@ addTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
   SDiv = S div 1000000,
   M = M1+M2+SDiv,
   {M,SRem,MicRem}.
+
+minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  {Mic,NewS1,NewM1} =
+    if
+      Mic1>=Mic2 -> {Mic1-Mic2,S1,M1};
+      S1>0 -> {(Mic1-Mic2)+1000000,S1-1,M1};
+      M1>0 -> {(Mic1-Mic2)+1000000,S1+1000000-1,M1-1};
+      true -> {Mic1-Mic2,0,0}
+    end,
+  {Sec,NewNewM1} =
+    if
+      NewS1>=S2 -> {NewS1-S2,NewM1};
+      NewM1>0 -> {(NewS1-S2)+1000000,NewM1-1};
+      true -> {NewS1-S2,0}
+    end,
+  {NewNewM1-M2,Sec,Mic}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -653,16 +650,34 @@ doStep1(Exec, SavedState, Conf) ->
   end.
 
 doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
+  Pid = P#process.pid,
+  Time = SavedState#state.time,
+  NewState =
+    case mce_conf:discrete_time(Conf) of
+      true ->
+	case Time of
+	  {_,_,_} ->
+	    case compareTimes_ge(Deadline,Time) of
+	      true -> 
+		mce_erl_actions:record
+		  (mce_erl_actions:mk_timeout
+		   (Pid,
+		    minusTimeStamps(Deadline,Time))),
+		SavedState#state{time=Deadline};
+	      false ->
+		SavedState
+	    end;
+	  _ -> SavedState
+	end;
+      _ -> SavedState
+    end,
   %% Timer has expired we can just run the code
   {TimeOutCall, Context} = getTimeOutCall(P#process.expr),
-  mce_erl_state:setState(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
-  Pid = P#process.pid,
-  mce_erl_actions:record
-    (mce_erl_actions:mk_timeout(Pid,Deadline)),
+  mce_erl_state:setState(mce_erl_sysOS:setCurrentRunContext(Exec,NewState)),
   mce_erl_actions:record
     (mce_erl_actions:mk_run
      (Pid,TimeOutCall)),
-  runUserCode(mce_erl:mk_context(TimeOutCall, Context), Conf).
+  runUserCode(mce_erl:mk_context(TimeOutCall,Context), Conf).
 
 getTimeOutCall({?RECVTAG,{_,{_Timer,TimeOutCall}}}) ->
   {TimeOutCall,[]};

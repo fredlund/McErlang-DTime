@@ -39,6 +39,7 @@
 
 -include("monState.hrl").
 -include("monitor.hrl").
+-include("stack.hrl").
 -include("stackEntry.hrl").
 -include("state.hrl").
 -include("mce_opts.hrl").

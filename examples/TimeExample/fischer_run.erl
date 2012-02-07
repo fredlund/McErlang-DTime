@@ -55,12 +55,39 @@ dot2(N,Tick,D,T) ->
       void,
       fun print_actions/1)).
 
+dot_space2(N,Tick,D,T) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=false,
+      table=mce_table_hashWithActions,
+      sends_are_sefs=true,
+      well_behaved=true,
+      partial_order=true,
+      save_table=true,
+      discrete_time=true}),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
 dots(N,Tick,D,T) ->
   mc(N,Tick,D,T),
   file:write_file
     ("hej.dot",
      mce_dot:from_stack
-     (mce_result:table(mce:result()),
+     (mce_result:stack(mce:result()),
+      void,
+      fun print_actions/1)).
+
+dots2(N,Tick,D,T) ->
+  mc2(N,Tick,D,T),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_stack
+     (mce_result:stack(mce:result()),
       void,
       fun print_actions/1)).
 
@@ -83,25 +110,43 @@ print_actions(Actions) ->
     "\"".
 
 print_action(Action) ->
+  Source =
+    case mce_erl_actions:get_source(Action) of
+      {pid,_,Pid} -> io_lib:format("~p",[Pid]);
+      Other -> io_lib:format("~p",[Other])
+    end,
   case mce_erl_actions:is_probe(Action) of
     true ->
       io_lib:format("~p",[mce_erl_actions:get_probe_label(Action)]);
     false ->
       case mce_erl_actions:is_send(Action) of
 	true -> 
-	  io_lib:format("sent ~p",[mce_erl_actions:get_send_msg(Action)]);
+	  io_lib:format
+	    ("~s: sent ~p",
+	     [Source,mce_erl_actions:get_send_msg(Action)]);
 	false ->
 	  case mce_erl_actions:is_api_call(Action) of
 	    true ->
 	      io_lib:format
-		("~p(~p) -> ~p",
-		 [mce_erl_actions:get_api_call_fun(Action),
+		("~s: ~p(~p) -> ~p",
+		 [Source,
+		  mce_erl_actions:get_api_call_fun(Action),
 		  mce_erl_actions:get_api_call_arguments(Action),
 		  mce_erl_actions:get_api_call_result(Action)]);
 	    false ->
-	      case mce_erl_actions:get_name(Action) of
-		run -> "";
-		Name -> io_lib:format("~p",[Name])
+	      case mce_erl_actions:is_timeout(Action) of
+		true ->
+		  case mce_erl_actions:get_timeout(Action) of
+		    Tick={_,_,_} ->
+		      io_lib:format("~s: timeout ~p",[Source,Tick]);
+		    _ ->
+		      io_lib:format("~s: timeout",[Source])
+		  end;
+		false ->
+		  case mce_erl_actions:get_name(Action) of
+		    run -> "";
+		    Name -> io_lib:format("~s: ~p",[Source,Name])
+		  end
 	      end
 	  end
       end

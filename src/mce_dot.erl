@@ -37,6 +37,8 @@
 	 from_stack/1,from_stack/3,
 	 from_buchi_automaton/1,from_buchi_automaton/3]).
 
+
+-include("stack.hrl").
 -include("stackEntry.hrl").
 
 pp_action() -> void.
@@ -62,13 +64,20 @@ from_stack(Stack) ->
 from_stack(Stack, StatePrinter, ActionPrinter) ->
   States = lists:reverse(get_stack_states(Stack)),
   Transitions = get_stack_transitions(Stack),
+  RealActionPrinter =
+    if
+      ActionPrinter==void ->
+	void;
+      true ->
+	fun (Entry) -> ActionPrinter(Entry#stackEntry.actions) end
+    end,
   {ok, {StateDict,TransitionDict}} =
     lists_to_dot_dicts
       (States,
        fun (S) -> S#stackEntry.abs_system end,
        Transitions,
        fun id_fun/1),
-  build_dot_digraph(StateDict,TransitionDict,StatePrinter,ActionPrinter).
+  build_dot_digraph(StateDict,TransitionDict,StatePrinter,RealActionPrinter).
   
 from_buchi_automaton(Buchi_Automaton) ->
   from_buchi_automaton(Buchi_Automaton, pp_state(), pp_action()).
@@ -104,18 +113,18 @@ get_stack_states(Stack) ->
   end.
 
 get_stack_state(Stack) ->
-    case mce_behav_stackOps:is_empty(Stack) of
-      true ->
-	  false;
-      false ->
-	  {Entry, Rest} = mce_behav_stackOps:pop(Stack),
-	  case Entry#stackEntry.transitions of
-	    void ->
-		{ok, {Entry, Rest}};
-	    _ ->
-		get_stack_state(Rest)
-	  end
-    end.
+  case mce_behav_stackOps:is_empty(Stack) of
+    true ->
+      false;
+    false ->
+      {Entry, Rest} = mce_behav_stackOps:pop(Stack),
+      case Entry#stackEntry.transitions of
+	void ->
+	  {ok, {Entry, Rest}};
+	_ ->
+	  get_stack_state(Rest)
+      end
+  end.
 
 allVertices(G) ->
   lists:map

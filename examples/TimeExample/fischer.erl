@@ -24,7 +24,8 @@ setting(Id,Tick,D,T) ->
 testing(Id,Tick,D,T) ->
   case read() of
     Id -> mutex(Id,Tick,D,T);
-    _ -> idle(Id,Tick,D,T)
+    0 -> latest(Tick,D,fun () -> setting(Id,Tick,D,T) end);
+    N -> idle(Id,Tick,D,T)
   end.
   
 mutex(Id,Tick,D,T) ->

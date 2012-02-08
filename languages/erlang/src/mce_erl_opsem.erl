@@ -653,6 +653,7 @@ doStep1(Exec, SavedState, Conf) ->
       handleTerminated()
   end.
 
+%% Check that we avoid repeated reductions
 doable(runnable,_) -> true;
 doable(sendable,_) -> true;
 doable(exiting,_) -> true;

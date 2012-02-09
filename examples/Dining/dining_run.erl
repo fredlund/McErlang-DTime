@@ -49,6 +49,19 @@ mc2b(N) when N>0, is_integer(N) ->
       save_table=true,
       discrete_time=true}).
 
+mc2c(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining,start,[N]},
+      is_infinitely_fast=false,
+      algorithm={mce_alg_safety_parallel,4},
+      table={mce_table_bitHash,[10000000]},
+      sends_are_sefs=true,
+      well_behaved=true,
+      partial_order=true,
+      save_table=true,
+      discrete_time=true}).
+
 dot2(N) ->
   mc2(N),
   file:write_file

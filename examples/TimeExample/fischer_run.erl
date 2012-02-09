@@ -64,7 +64,7 @@ mc2c(N,Tick,D,T) when N>0, is_integer(N) ->
     (#mce_opts
      {program={fischer,start,[N,Tick,D,T]},
       is_infinitely_fast=false,
-      algorithm=mce_alg_safety_rnd,
+      algorithm={mce_alg_safety_parallel,4},
       table={mce_table_bitHash,[10000000]},
       shortest=true,
       sends_are_sefs=true,

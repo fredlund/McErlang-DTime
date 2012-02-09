@@ -59,6 +59,21 @@ mc2b(N,Tick,D,T) when N>0, is_integer(N) ->
       save_table=true,
       discrete_time=true}).
 
+mc2c(N,Tick,D,T) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={fischer,start,[N,Tick,D,T]},
+      is_infinitely_fast=false,
+      algorithm=mce_alg_safety_rnd,
+      table={mce_table_bitHash,[10000000]},
+      shortest=true,
+      sends_are_sefs=true,
+      well_behaved=true,
+      partial_order=true,
+      monitor={?MODULE,void},
+      save_table=true,
+      discrete_time=true}).
+
 dot2(N,Tick,D,T) ->
   mc2(N,Tick,D,T),
   file:write_file
@@ -130,10 +145,8 @@ print_actions(Actions) ->
   SourceStr =
     case Actions of
       [Action|_] ->
-	case mce_erl_actions:get_source(Action) of
-	  {pid,_,Pid} -> io_lib:format("~p: ",[Pid]);
-	  Other -> io_lib:format("~p: ",[Other])
-	end;
+	io_lib:format
+	  ("~p: ",[simplify_pids(mce_erl_actions:get_source(Action))]);
       _ ->
 	""
     end,
@@ -163,7 +176,7 @@ print_action(Action) ->
 	true -> 
 	  io_lib:format
 	    ("sent ~p",
-	     [mce_erl_actions:get_send_msg(Action)]);
+	     [simplify_pids(mce_erl_actions:get_send_msg(Action))]);
 	false ->
 	  case mce_erl_actions:is_api_call(Action) of
 	    true ->
@@ -190,6 +203,15 @@ print_action(Action) ->
 	  end
       end
   end.
+
+simplify_pids({pid,_,Pid}) ->
+  Pid;
+simplify_pids([First|Rest]) ->
+  [simplify_pids(First)|simplify_pids(Rest)];
+simplify_pids(Tuple) when is_tuple(Tuple) ->
+  list_to_tuple(lists:map(fun simplify_pids/1,tuple_to_list(Tuple)));
+simplify_pids(Other) -> 
+  Other.
 
 debug(N,Tick,D,T) when N>0, is_integer(N) ->
   mce:start

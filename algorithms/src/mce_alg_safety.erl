@@ -289,32 +289,30 @@ set_path_limit(Depth) ->
 
 %% Compute transitions from current state; coupled with monitor
 transitions(Sys, Monitor, Stack, Table, Conf) ->
-  lists:map
-    (fun (T) ->
-	 try
-	   mce_conf:commit(T, Monitor, Conf)
-	   of
-	   {Actions, NSys} ->
+  try mce_conf:transcommit(Sys,Conf) of
+      Results ->
+      lists:map
+	(fun ({Actions,NSys}) ->
 	     {Actions, #monState{state=NSys, monitor=Monitor}}
-	 catch
-	   {result_exc,Result} ->
-	     case mce_result:stack(Result) of
-	       void ->
-		 mce_result:throw_result_exc
-		   (add_state_count
-		    (mce_result:add_table
-		     (Table,
-		      mce_result:add_monitor
-		      (Monitor,
-		       mce_result:add_stack
-		       (gen_error_stack(Sys,Monitor,Stack),Result)),Conf)));
-	       _ ->
-		 mce_result:throw_result_exc
-		   (add_state_count(mce_result:add_monitor(Monitor,Result)))
-	     end
-	 end
-     end,
-     mce_conf:transitions(Sys, Conf)).
+	 end,
+	 Results)
+  catch
+    {result_exc,Result} ->
+      case mce_result:stack(Result) of
+	void ->
+	  mce_result:throw_result_exc
+	    (add_state_count
+	       (mce_result:add_table
+		  (Table,
+		   mce_result:add_monitor
+		     (Monitor,
+		      mce_result:add_stack
+			(gen_error_stack(Sys,Monitor,Stack),Result)),Conf)));
+	_ ->
+	  mce_result:throw_result_exc
+	    (add_state_count(mce_result:add_monitor(Monitor,Result)))
+      end
+  end.
 
 gen_error_stack(State, Monitor, Stack) ->
   Depth = stackDepth(Stack),

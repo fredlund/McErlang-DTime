@@ -33,8 +33,8 @@
 
 -module(mce_erl_opsem).
 -export([initialState/2,initialState/3,
-	 transitions/2,commit/2,commit/3,checkReceive/1,
-	 doStep/2,updProcStatusFromQueue/1,record_action/1]).
+	 transitions/2,commit/3,commit/4,transcommit/2,checkReceive/1,
+	 doStep/3,updProcStatusFromQueue/1,record_action/1]).
 
 -include("process.hrl").
 -include("state.hrl").
@@ -75,6 +75,15 @@ initialState(NodeName, Expr, Conf) ->
 %%% Computes all the transitions of a state
 
 transitions(State, Conf) ->
+  {Type,Transitions} = int_transitions(State,Conf),
+  case mce_conf:random(Conf) of
+    true ->
+      randomise(Transitions);
+    _ ->
+      Transitions
+  end.
+
+int_transitions(State,Conf) ->
   %% In simulation mode we may have gotten external i/o waiting
   %% to be read here, and communicated to simulated processes.
   case mce_conf:external_io_possible(Conf) of
@@ -87,13 +96,35 @@ transitions(State, Conf) ->
   end.
 
 %%% Commits to a transition
-
-commit(Alternative, Monitor, Conf) ->
+commit(Alternative, State, Monitor, Conf) ->
   put(mc_monitor, Monitor),
-  (?MODULE):doStep(Alternative, Conf).
+  (?MODULE):doStep(Alternative, State, Conf).
 
-commit(Alternative, Conf) ->
-  commit(Alternative, void, Conf).
+commit(Alternative, State, Conf) ->
+  commit(Alternative, State, void, Conf).
+
+%% Combines transitions and commits
+transcommit(State,Conf) ->
+  PartRestrict =
+    mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
+  {Type,Transitions} =
+    int_transitions(State,Conf),
+  case {Type,PartRestrict,Transitions} of
+    %% Merge local transitions if we are doing partial order reductions
+    {normal,true,[Alternative]} ->
+      {Actions,NewState} = commit(Alternative,State,Conf),
+      transcommit(NewState,Conf);
+    {normal,true,_} ->
+      [lists:foldl
+	 (fun (Alternative,{AccActions,AccState}) ->
+	     {NewActions,NewState} = commit(Alternative,AccState,Conf),
+	      {NewActions++AccActions,NewState}
+	  end, {[],State}, Transitions)];
+    _ ->
+      lists:map
+	(fun (Alternative) -> commit(Alternative,State,Conf) end, 
+	 Transitions)
+  end.
 
 moveIO(Flag, Received, State) ->
   receive
@@ -173,18 +204,7 @@ allPossibilities(State, Conf) ->
   TimeRestrictedPossibilities =
     timeRestrict(State, AllPossibilities, Conf),
   ?LOG("all transitions=~n~p~n",[TimeRestrictedPossibilities]),
-
-  %% This is the wrong place to do a partial order restriction,
-  %% since we have to check the looping condition in algorithms.
-  %% But we will test it for now...
-  PartRestricted = partRestrict(TimeRestrictedPossibilities, Conf),
-
-  case mce_conf:random(Conf) of
-    true ->
-      randomise(PartRestricted);
-    _ ->
-      PartRestricted
-  end.
+  partRestrict(TimeRestrictedPossibilities, Conf).
 
 partRestrict(Possibilities, Conf) ->
   PartRestrict =
@@ -193,17 +213,17 @@ partRestrict(Possibilities, Conf) ->
     PartRestrict ->
       {Decisive,Normal} = part_sort_actions(Possibilities),
       case Normal of
-	[First|_] -> [First];
-	_ -> Decisive
+	[_|_] -> {normal,Normal};
+	_ -> {decisive,Decisive}
       end;
-    true -> Possibilities
+    true -> {decisive,Possibilities}
   end.
 
 part_sort_actions(Possibilities) -> part_sort_actions(Possibilities,[],[]).
 part_sort_actions([],Decisive,Normal) -> {Decisive,Normal};
 part_sort_actions([Trans|Rest],Decisive,Normal) ->
   case Trans of
-    {exec, Exec, SavedState} ->
+    {exec, Exec} ->
       Process = Exec#executable.process,
       case Process#process.status of
 	runnable ->
@@ -257,7 +277,7 @@ timeRestrict(State, Possibilities, Conf) ->
     lists:foldl
       (fun (Entry,Acc={Urgent,Slow,TimeEnt={MostUrgent,TimerEntries}}) ->
 	   case Entry of
-	     {exec, Exec, SavedState} ->
+	     {exec, Exec} ->
 	       Process = Exec#executable.process,
 	       IsUrgentState = is_urgent(Process#process.expr,Conf),
 	       case Process#process.status of
@@ -319,7 +339,7 @@ timeRestrict(State, Possibilities, Conf) ->
 getFirstProcessToFire(Entries) ->
   lists:foldl
     (fun (Entry,Saved) ->
-	 {exec,Exec,_} = Entry,
+	 {exec,Exec} = Entry,
 	 Process = Exec#executable.process,
 	 {timer,TimerDeadline} = Process#process.status,
 	 case Saved of
@@ -335,7 +355,7 @@ getFirstProcessToFire(Entries) ->
 remove_timed_transitions(Deadline,Entries) ->
   lists:filter
     (fun (Entry) ->
-	 {exec, Exec, _} = Entry,
+	 {exec, Exec} = Entry,
 	 {timer,TimerDeadline} = (Exec#executable.process)#process.status,
 	 Result = compareTimes_ge(Deadline,TimerDeadline),
 	 Result
@@ -386,8 +406,7 @@ allNodeMoves(F,[Node|RestNodes],Seen,State) ->
 	   {exec,
 	    #executable{node=Node#node{processes=OtherProcesses},
 			otherNodes=Seen++RestNodes,
-			process=Process},
-	    State}
+			process=Process}}
        end,
        F(Node#node.processes,[],State)),
   NodeMoves++allNodeMoves(F,RestNodes,[Node|Seen],State).
@@ -400,7 +419,7 @@ allCommMovesPossibles([NodeSpec|Rest],Seen,S) ->
 	if RestSigs=:=[] -> Seen++Rest;
 	   true -> Seen++[{Key,RestSigs}|Rest]
 	end,
-      [{commMove,{FromObj,ToObj,Sig,RemainingEther},S}|
+      [{commMove,{FromObj,ToObj,Sig,RemainingEther}}|
        allCommMovesPossibles(Rest,Seen++[NodeSpec],S)];
     _ ->
       throw(badEther)
@@ -432,22 +451,23 @@ enumerateAllPossibles([P| Rest], Seen, State) ->
     choice ->
       Others = Seen ++ Rest,
       Values =
-	lists:map(fun (LetExp) ->
-		      CExp =
-			case LetExp of
-			  {?CONTEXTTAG,{Exp,Cntxt}} ->
-			    {?CONTEXTTAG,
-			     {Exp,
-			      [mce_erl:was_choice(void)|Cntxt]}};
-			  _ ->
-			    mce_erl:mk_context
-			      (LetExp,[mce_erl:was_choice(void)])
-			end,
-		      NewP =
-			P#process{status=runnable, expr=CExp},
-		      {NewP, Others, State}
-		  end,
-		  digOutChoice(P#process.expr)) ++
+	lists:map
+	  (fun (LetExp) ->
+	       CExp =
+		 case LetExp of
+		   {?CONTEXTTAG,{Exp,Cntxt}} ->
+		     {?CONTEXTTAG,
+		      {Exp,
+		       [mce_erl:was_choice(void)|Cntxt]}};
+		   _ ->
+		     mce_erl:mk_context
+		       (LetExp,[mce_erl:was_choice(void)])
+		 end,
+	       NewP =
+		 P#process{status=runnable, expr=CExp},
+	       {NewP, Others, State}
+	   end,
+	   digOutChoice(P#process.expr)) ++
 	enumerateAllPossibles(Rest, [P| Seen], State);
     _ ->
       [{P, Seen ++ Rest, State}|
@@ -499,11 +519,11 @@ minusTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-doStep({commMove, CommSpec, State}, Conf) ->
+doStep({commMove, CommSpec}, State, Conf) ->
   initActions(),
   Result = mce_erl_node:doDispatchSignal(CommSpec, State),
   {getActions(), Result};
-doStep({exec, Exec, SavedState}, Conf) ->
+doStep({exec, Exec}, SavedState, Conf) ->
   initActions(),
   try
     Result = doStep1(Exec, SavedState, Conf),

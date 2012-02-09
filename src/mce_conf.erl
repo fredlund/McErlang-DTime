@@ -37,7 +37,7 @@
 -export([resolve_conf/1,resolve_user_conf/1,resolve_user_confs/1]).
 -export([default_conf/0]).
 -export([algorithm_init_args/1]).
--export([transitions/2,commit/2,commit/3,prepare_run/1]).
+-export([transitions/2,commit/2,commit/3,transcommit/2,prepare_run/1]).
 -export([get_debugger/1,external_io_possible/1]).
 -export([sim_actions/1,notice_exits/1,fail_on_exit/1,terminate/1,random/1]).
 -export([wants_rpc/1,program/1,is_simulation/1,pathLimit/1,shortest/1]).
@@ -93,7 +93,7 @@ resolve_conf(L) ->
   Conf2 =
     if Conf1#mce_opts.commit=:=undefined ->
 %%	Conf1#mce_opts{commit=fun Language:commit/3};
-	Conf1#mce_opts{commit={Language,commit}};
+	Conf1#mce_opts{commit={Language,commit},transcommit={Language,transcommit}};
        true ->
 	Conf1
     end,
@@ -236,6 +236,10 @@ permit_empty(SpecName,Other) ->
 
 transitions(State,Conf) -> 
   Fun = Conf#mce_opts.transitions,
+  Fun(State,Conf).
+
+transcommit(State,Conf) -> 
+  Fun = Conf#mce_opts.transcommit,
   Fun(State,Conf).
 
 commit(Transition,Conf) ->

@@ -74,17 +74,30 @@ debug() ->
       sim_actions=true}).
 
 print_actions(Actions) ->
-  "label=\""++
-  lists:foldr
-    (fun (Action,Rest) ->
-	 if 
-	   Rest=="" ->
-	     io_lib:format("~s",[print_action(Action)]);
-	   true ->
-	     io_lib:format("~s,~s",[Rest,print_action(Action)])
-	 end
-     end, "", Actions)++
-    "\"".
+  SourceStr =
+    case Actions of
+      [Action|_] ->
+	io_lib:format
+	  ("~p: ",[simplify_pids(mce_erl_actions:get_source(Action))]);
+      _ ->
+	""
+    end,
+  ActionsStr =
+    lists:foldl
+      (fun (Action,Output) ->
+	   ActionStr = print_action(Action),
+	   if 
+	     ActionStr=="" ->
+	       Output;
+	     Output=="" ->
+	       io_lib:format("~s",[ActionStr]);
+	     Output==[""] ->
+	       io_lib:format("~s",[ActionStr]);
+	     true ->
+	       io_lib:format("~s,~s",[Output,ActionStr])
+	   end
+       end, "", Actions),
+  "label=\""++SourceStr++ActionsStr++"\"".
 
 print_action(Action) ->
   case mce_erl_actions:is_probe(Action) of
@@ -93,11 +106,44 @@ print_action(Action) ->
     false ->
       case mce_erl_actions:is_send(Action) of
 	true -> 
-	  io_lib:format("sent ~p",[mce_erl_actions:get_send_msg(Action)]);
+	  io_lib:format
+	    ("sent ~p",
+	     [simplify_pids(mce_erl_actions:get_send_msg(Action))]);
 	false ->
-	  io_lib:format("~p",[mce_erl_actions:get_name(Action)])
+	  case mce_erl_actions:is_api_call(Action) of
+	    true ->
+	      io_lib:format
+		("~p(~p) -> ~p",
+		 [mce_erl_actions:get_api_call_fun(Action),
+		  mce_erl_actions:get_api_call_arguments(Action),
+		  mce_erl_actions:get_api_call_result(Action)]);
+	    false ->
+	      case mce_erl_actions:is_timeout(Action) of
+		true ->
+		  case mce_erl_actions:get_timeout(Action) of
+		    Tick={_,_,_} ->
+		      io_lib:format("timeout ~p",[Tick]);
+		    _ ->
+		      io_lib:format("timeout",[])
+		  end;
+		false ->
+		  case mce_erl_actions:get_name(Action) of
+		    run -> "";
+		    Name -> io_lib:format("~p",[Name])
+		  end
+	      end
+	  end
       end
   end.
+
+simplify_pids({pid,_,Pid}) ->
+  Pid;
+simplify_pids([First|Rest]) ->
+  [simplify_pids(First)|simplify_pids(Rest)];
+simplify_pids(Tuple) when is_tuple(Tuple) ->
+  list_to_tuple(lists:map(fun simplify_pids/1,tuple_to_list(Tuple)));
+simplify_pids(Other) -> 
+  Other.
 
 lampsystem() ->		 
   Lamp = spawn(?MODULE,lamp,[]),

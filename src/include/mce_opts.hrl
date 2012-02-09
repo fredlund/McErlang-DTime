@@ -27,6 +27,7 @@
 -record(mce_opts,
 	{transitions=undefined,        %% Function for computing next transition
 	 commit=undefined,             %% Function for committing to transition
+	 transcommit=undefined,
 	 sim_external_world=undefined, %% The simulation interfaces with the 
 	 %% external world, i.e., don't halt it when
 	 %% there are no transitions but recheck.

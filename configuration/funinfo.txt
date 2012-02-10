@@ -85,7 +85,7 @@
  {{random,seed,0},[{translated_to,{random,seed}}]},
  {{random,seed,3},[{translated_to,{random,seed}}]},
  {{random,uniform,0},[{translated_to,{random,uniform}}]},
- {{random,uniform,1},[{translated_to,{random,uniform}}]},
+ {{random,uniform,1},[{translated_to,{mce_erl,choice}}]},
  {{mce_erl,safe_call,4},[rcv]},
  {{mce_erl,pause,2},[rcv]},
  {{mce_erl,choice,1},[rcv]},

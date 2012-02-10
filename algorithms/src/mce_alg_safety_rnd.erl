@@ -386,7 +386,7 @@ transitions(Sys, Monitor, Stack, Table, Conf) ->
   lists:map
     (fun (T) ->
 	 try
-	   mce_conf:commit(T, Monitor, Conf)
+	   mce_conf:commit(T, Sys, Monitor, Conf)
 	   of
 	   {Actions, NSys} ->
 	     {Actions, #monState{state=NSys, monitor=Monitor}}

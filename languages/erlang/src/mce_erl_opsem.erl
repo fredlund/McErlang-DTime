@@ -105,8 +105,9 @@ commit(Alternative, State, Conf) ->
 
 %% Combines transitions and commits
 transcommit(State,Conf) ->
-  lists:usort(transcommit_int(State,Conf)).
-transcommit_int(State,Conf) ->
+  lists:usort(transcommit_int(false,State,Conf)).
+  
+transcommit_int(Rpt,State,Conf) ->
   {Actions,NewState} =
     collapse_locals([],State,Conf),
   PartRestrict =
@@ -122,23 +123,21 @@ transcommit_int(State,Conf) ->
 	 case NewerActions of
 	   [Action|_] ->
 	     Source = mce_erl_actions:get_source(Action),
-	     case {mce_erl_actions:is_choice(Action),
+	     case {Rpt,mce_erl_actions:is_choice(Action),
 		   mce_erl_actions:is_timeout(Action)} of
-	       {true,false} ->
-		 io:format("we found a choice!~n"),
+	       {false,true,false} ->
 		 Results1 =
 		   filter_nonlocals
-		     (transcommit_int(NewerState1,Conf),
-		      Source,NewerActions1,NewerState1,Conf),
+		     (transcommit_int(true,NewerState1,Conf),
+		      Source,NewerActions1,Conf),
 		 if
 		   Results1==[] ->
 		     [{NewerActions1,NewerState1}];
 		   true ->
 		     Results1
 		 end;
-	       {false,true} ->
-		 io:format("we found a timeout!~n",[]),
-		 Results2 = transcommit_int(NewerState1,Conf),
+	       {false,false,true} ->
+		 Results2 = transcommit_int(true,NewerState1,Conf),
 		 OtherTimeouts =
 		   mce_erl_actions:get_timeout(Action)=/={0,0,0}
 		   andalso
@@ -153,15 +152,10 @@ transcommit_int(State,Conf) ->
 			      false
 			  end
 		      end, Results2),
-		 io:format
-		   ("we found a timeout, other results=~p~n,other timeout=~p~n",
-		    [length(Results2),
-		     OtherTimeouts]),
 		 if
 		   not(OtherTimeouts) ->
 		     Results3 =
-		       filter_nonlocals
-			 (Results2,Source,NewerActions1,NewerState1,Conf),
+		       filter_nonlocals(Results2,Source,NewerActions1,Conf),
 		     if
 		       Results3==[] ->
 			 [{NewerActions1,NewerState1}];
@@ -177,7 +171,7 @@ transcommit_int(State,Conf) ->
      end, 
      Transitions).
 
-filter_nonlocals(Results,Source,Actions,State,Conf) ->
+filter_nonlocals(Results,Source,Actions,Conf) ->
   lists:foldl
     (fun ({Actions2,State2},Acc) ->
 	 case Actions2 of

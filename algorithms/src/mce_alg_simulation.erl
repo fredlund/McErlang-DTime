@@ -92,7 +92,7 @@ run(Stack, Scheduler, Conf) ->
 	    if SchedulerCommits -> Result;
 	       true ->
 		try
-		  mce_conf:commit(Result, NewMon, Conf)
+		  mce_conf:commit(Result, Sys, NewMon, Conf)
 		catch
 		  {result_exc,ResultExc} ->
 		    case mce_result:stack(ResultExc) of

@@ -154,8 +154,8 @@ monitor_mce(MonInfo) ->
   {DeadlineType,FirstDeadline} =
     compute_first_deadline(MonInfo),
   ?LOG
-    ("First deadline is ~p of type ~p~n",
-     [FirstDeadline,DeadlineType]),
+    ("~p: first deadline is ~p of type ~p~n",
+     [erlang:now(),FirstDeadline,DeadlineType]),
   NewMonInfo = 
     MonInfo#mceMonitor{deadline_running=DeadlineType},
   ?LOG("monitor_mce: ~p~n",[MonInfo]),
@@ -180,7 +180,7 @@ monitor_mce(MonInfo) ->
 	  response_deadline=void,
 	  alg_deadline=void});
     alive ->
-      ?LOG("got alive~n",[]),
+      ?LOG("~p: got alive~n",[erlang:now()]),
       monitor_mce
 	(NewMonInfo#mceMonitor
 	 {ask_deadline=now_plus_seconds(5),response_deadline=void});
@@ -235,8 +235,8 @@ compute_first_deadline(MonInfo) ->
   
 check_deadlines(MonInfo) ->
   ?LOG
-    ("Deadline of type ~p not met~n",
-     [MonInfo#mceMonitor.deadline_running]),
+    ("~p: deadline of type ~p not met~n",
+     [erlang:now(),MonInfo#mceMonitor.deadline_running]),
   case MonInfo#mceMonitor.deadline_running of
     alg ->
       ?LOG("ordering finish~n",[]),

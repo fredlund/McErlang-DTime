@@ -258,7 +258,7 @@ get_other_state({P,Q},LR) -> if LR -> Q; true -> P end.
 compute_transitions(State, Conf, MState) ->
   Transitions =
     lists:map 
-      (fun (T) -> mce_conf:commit(T, Conf) end,
+      (fun (T) -> mce_conf:commit(T, State, Conf) end,
        mce_conf:transitions(State, Conf)),
   %%io:format("Transitions for~n~p~nare~n~p~n",[State,Transitions]),
   classifier(Transitions,MState).

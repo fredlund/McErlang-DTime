@@ -189,6 +189,7 @@ run(Stack, Abstraction, Table, Waiting, CoordPid, Conf) ->
 
 check_transitions(NStates, Transitions, Stack, Abstraction, Table, 
 		  Waiting, CoordPid, Conf) ->
+  ?LOG("ordered to check transitions~n",[]),
   if NStates rem 100 =:= 0 ->
       check_transitions
 	(Transitions, Stack, Abstraction, Table,
@@ -340,10 +341,8 @@ set_path_limit(Depth) ->
 transitions(Sys, Monitor, Stack, Conf) ->
   lists:map
     (fun (T) ->
-	 try
-	   mce_conf:commit(T, Monitor, Conf)
-	   of
-	   {Actions, NSys} ->
+	 try mce_conf:commit(T, Sys, Monitor, Conf) of
+	     {Actions, NSys} ->
 	     {Actions, #monState{state=NSys, monitor=Monitor}}
 	 catch
 	   {result_exc,Result} ->

@@ -141,7 +141,8 @@ print_states() ->
   {ok, States} = mce_behav_tableOps:states_to_list(Table),
   lists:foreach(fun (State) -> io:format("~p~n",[State]) end, States).
 
-print_actions(Actions) ->
+print_actions(Actions0) ->
+  Actions = collapse_actions(Actions0),
   SourceStr =
     case Actions of
       [Action|_] ->
@@ -212,6 +213,45 @@ simplify_pids(Tuple) when is_tuple(Tuple) ->
   list_to_tuple(lists:map(fun simplify_pids/1,tuple_to_list(Tuple)));
 simplify_pids(Other) -> 
   Other.
+
+collapse_actions(Actions) ->
+  collapse_actions(Actions,[]).
+
+collapse_actions([],Actions) ->
+  lists:reverse(Actions);
+collapse_actions([Action|Rest],Actions) ->
+  case mce_erl_actions:is_choice(Action) orelse mce_erl_actions:is_run(Action) of
+    true ->
+      collapse_actions(Rest,Actions);    
+    false ->
+      case Actions of
+	[] -> collapse_actions(Rest,[Action]);
+	[Action2|Rest2] ->
+	  case mce_erl_actions:is_timeout(Action) andalso mce_erl_actions:is_timeout(Action2) of
+	    true ->
+	      collapse_actions
+		(Rest,
+		 [mce_erl_actions:mk_timeout
+		    (mce_erl_actions:get_source(Action),
+		     addTimeStamps
+		     (mce_erl_actions:get_timeout(Action),
+		      mce_erl_actions:get_timeout(Action2)))|
+		  Rest2]);
+	    false ->
+	      collapse_actions(Rest,[Action,Action2|Rest2])
+	  end
+      end
+  end.
+
+addTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  Mic=Mic1+Mic2,
+  MicRem = Mic rem 1000000,
+  MicDiv = Mic div 1000000,
+  S = S1+S2+MicDiv,
+  SRem = S rem 1000000,
+  SDiv = S div 1000000,
+  M = M1+M2+SDiv,
+  {M,SRem,MicRem}.
 
 debug(N,Tick,D,T) when N>0, is_integer(N) ->
   mce:start
@@ -292,12 +332,3 @@ has_probe_with_tag(Tag,Actions) ->
 	 (_Action,Other) -> Other
      end, false, Actions).
 
-
-
-
-			    
-		
-	  
-  
-
- 

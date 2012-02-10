@@ -28,7 +28,7 @@ mc() ->
 dot() ->
   mc(),
   file:write_file
-    (atom_to_list(?MODULE)++".dot",
+    (atom_to_list(hej)++".dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
       fun ({_,_SysMon}) ->
@@ -53,7 +53,7 @@ mc2() ->
 dot2() ->
   mc2(),
   file:write_file
-    (atom_to_list(?MODULE)++".dot",
+    (atom_to_list(hej)++".dot",
      mce_dot:from_table
      (mce_result:table(mce:result()),
       fun ({_,_SysMon}) ->
@@ -73,7 +73,9 @@ debug() ->
       algorithm=mce_alg_debugger,
       sim_actions=true}).
 
-print_actions(Actions) ->
+print_actions(Actions0) ->
+  Actions =
+    collapse_actions(Actions0),
   SourceStr =
     case Actions of
       [Action|_] ->
@@ -136,6 +138,35 @@ print_action(Action) ->
       end
   end.
 
+collapse_actions(Actions) ->
+  collapse_actions(Actions,[]).
+
+collapse_actions([],Actions) ->
+  lists:reverse(Actions);
+collapse_actions([Action|Rest],Actions) ->
+  case mce_erl_actions:is_choice(Action) orelse mce_erl_actions:is_run(Action) of
+    true ->
+      collapse_actions(Rest,Actions);    
+    false ->
+      case Actions of
+	[] -> collapse_actions(Rest,[Action]);
+	[Action2|Rest2] ->
+	  case mce_erl_actions:is_timeout(Action) andalso mce_erl_actions:is_timeout(Action2) of
+	    true ->
+	      collapse_actions
+		(Rest,
+		 [mce_erl_actions:mk_timeout
+		    (mce_erl_actions:get_source(Action),
+		     addTimeStamps
+		     (mce_erl_actions:get_timeout(Action),
+		      mce_erl_actions:get_timeout(Action2)))|
+		  Rest2]);
+	    false ->
+	      collapse_actions(Rest,[Action,Action2|Rest2])
+	  end
+      end
+  end.
+
 simplify_pids({pid,_,Pid}) ->
   Pid;
 simplify_pids([First|Rest]) ->
@@ -182,7 +213,6 @@ lamp() ->
       mce_erl:probe(low),
       receive
 	{call,press,Caller2} ->
-	  reply(Caller2,ok),
 	  case
 	    compareTimes_ge
 	    (mce_erl_time:now(),
@@ -192,14 +222,16 @@ lamp() ->
 	    true ->
 	      mce_erl:probe(off),
 	      mce_erl_time:forget(PressTime),
+	      reply(Caller2,ok),
 	      lamp();
 	    false ->
 	      mce_erl:probe(bright),
 	      mce_erl_time:forget(PressTime),
+	      reply(Caller2,ok),
 	      receive
 		{call,press,Caller3} ->
-		  reply(Caller3,ok),
 		  mce_erl:probe(off),
+		  reply(Caller3,ok),
 		  lamp()
 	      end
 	  end

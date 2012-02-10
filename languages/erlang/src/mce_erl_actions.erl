@@ -35,13 +35,14 @@
 
 -export([mk_send/3, mk_send/4, mk_probe/3, mk_probe/2, mk_input/4, mk_io/2, mk_recv/2]).
 -export([mk_run/2,mk_run/3,mk_run/4,mk_output/4,mk_died/2,mk_spawn/3]).
+-export([mk_choice/2]).
 -export([mk_crashing/4,mk_terminated/2,mk_api_call/4,mk_deliver/4]).
 -export([mk_timeout/2,get_timeout/1]).
 
 -export([type/1]).
 -export([is_send/1,is_probe/1,is_input/1,is_io/1,is_recv/1,is_run/1,is_died/1]).
 -export([is_output/1,is_spawn/1,is_crashing/1,is_terminated/1,is_api_call/1]).
--export([is_deliver/1,is_timeout/1]).
+-export([is_deliver/1,is_timeout/1,is_choice/1]).
 
 -export([get_send_pid/1,get_send_resolved_pid/1,get_send_msg/1,
 	 get_probe/1,get_probe_label/1,get_probe_term/1,
@@ -189,6 +190,15 @@ mk_run(Pid,Module,Fun,Arguments) ->
 
 get_run_expr(Action) ->
   mce_actions:get_argument(Action).
+
+mk_choice(Pid,Expr) ->
+  mce_actions:mk(Pid,choice,Expr).
+
+is_choice(Action) ->
+  case mce_actions:is_action(Action) of
+    true -> get_name(Action)=:=choice;
+    false -> false
+  end.
 
 %% @private
 mk_output(Source,From,To,Signal) ->

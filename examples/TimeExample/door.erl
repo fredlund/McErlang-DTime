@@ -18,27 +18,26 @@ button(Pid,Password) ->
 locked({button, Password}, _, Code) -> 
   case Password of
     Code -> 
-      mce_erl:probe(do_unlock),
-      {reply, ok, open, Code, 20000};
+      mce_erl:probe(unlock),
+      {reply, ok, open, Code, 10000};
     Wrong -> 
-      mce_erl:probe(display_message),
+      mce_erl:probe(wrong),
       {reply, ok, locked, Code}
   end.
 
 open({button, Password}, _, Code) -> 
-  mce_erl:probe(do_lock),
+  mce_erl:probe(lock),
   {reply, ok, locked, Code}.
 
 open(timeout, Code) -> 
-  mce_erl:probe(display_message),
-  mce_erl:probe(do_lock),
+  mce_erl:probe(lock),
   {next_state, locked, Code}.
 
 
 %% ======================================================================
 
 run(N,Tick,MaxWait) ->
-  {ok,Pid} = start(3),
+  {ok,Pid} = start(2),
   spawn(fun () -> user(Pid,N,Tick,MaxWait) end).
 
 user(Pid,N,Tick,MaxWait) -> 
@@ -115,7 +114,8 @@ print_states() ->
   {ok, States} = mce_behav_tableOps:states_to_list(Table),
   lists:foreach(fun (State) -> io:format("~p~n",[State]) end, States).
 
-print_actions(Actions) ->
+print_actions(Actions0) ->
+  Actions = collapse_actions(Actions0),
   SourceStr =
     case Actions of
       [Action|_] ->
@@ -194,6 +194,45 @@ simplify_msg({reply,_,Reply}) ->
   Reply;
 simplify_msg(Msg) ->  
   Msg.
+
+collapse_actions(Actions) ->
+  collapse_actions(Actions,[]).
+
+collapse_actions([],Actions) ->
+  lists:reverse(Actions);
+collapse_actions([Action|Rest],Actions) ->
+  case mce_erl_actions:is_choice(Action) orelse mce_erl_actions:is_run(Action) of
+    true ->
+      collapse_actions(Rest,Actions);    
+    false ->
+      case Actions of
+	[] -> collapse_actions(Rest,[Action]);
+	[Action2|Rest2] ->
+	  case mce_erl_actions:is_timeout(Action) andalso mce_erl_actions:is_timeout(Action2) of
+	    true ->
+	      collapse_actions
+		(Rest,
+		 [mce_erl_actions:mk_timeout
+		    (mce_erl_actions:get_source(Action),
+		     addTimeStamps
+		     (mce_erl_actions:get_timeout(Action),
+		      mce_erl_actions:get_timeout(Action2)))|
+		  Rest2]);
+	    false ->
+	      collapse_actions(Rest,[Action,Action2|Rest2])
+	  end
+      end
+  end.
+
+addTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  Mic=Mic1+Mic2,
+  MicRem = Mic rem 1000000,
+  MicDiv = Mic div 1000000,
+  S = S1+S2+MicDiv,
+  SRem = S rem 1000000,
+  SDiv = S div 1000000,
+  M = M1+M2+SDiv,
+  {M,SRem,MicRem}.
 
 debug(N,Tick,MaxWait) when N>0, is_integer(N) ->
   mce:start

@@ -105,17 +105,93 @@ commit(Alternative, State, Conf) ->
 
 %% Combines transitions and commits
 transcommit(State,Conf) ->
-  {Actions,NewState} = collapse_locals([],State,Conf),
+  lists:usort(transcommit_int(State,Conf)).
+transcommit_int(State,Conf) ->
+  {Actions,NewState} =
+    collapse_locals([],State,Conf),
   PartRestrict =
     mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
   {_Type,Transitions} =
-    int_transitions(State,Conf),
-  lists:map
+    int_transitions(NewState,Conf),
+  lists:flatmap
     (fun (Alternative) ->
-	 {NewerActions,NewerState} = commit(Alternative,State,Conf),
-	 collapse_locals(Actions++NewerActions,NewerState,Conf)
+	 {NewerActions,NewerState} =
+	   commit(Alternative,NewState,Conf),
+	 {NewerActions1,NewerState1} = 
+	   collapse_locals(Actions++NewerActions,NewerState,Conf),
+	 case NewerActions of
+	   [Action|_] ->
+	     Source = mce_erl_actions:get_source(Action),
+	     case {mce_erl_actions:is_choice(Action),
+		   mce_erl_actions:is_timeout(Action)} of
+	       {true,false} ->
+		 io:format("we found a choice!~n"),
+		 Results1 =
+		   filter_nonlocals
+		     (transcommit_int(NewerState1,Conf),
+		      Source,NewerActions1,NewerState1,Conf),
+		 if
+		   Results1==[] ->
+		     [{NewerActions1,NewerState1}];
+		   true ->
+		     Results1
+		 end;
+	       {false,true} ->
+		 io:format("we found a timeout!~n",[]),
+		 Results2 = transcommit_int(NewerState1,Conf),
+		 OtherTimeouts =
+		   mce_erl_actions:get_timeout(Action)=/={0,0,0}
+		   andalso
+		   lists:any 
+		     (fun ({Actions,_}) ->
+			  case Actions of
+			    [OtherAction|_] ->
+			      mce_erl_actions:get_source(OtherAction)=/=Source
+				andalso 
+				mce_erl_actions:is_timeout(OtherAction);
+			    _ ->
+			      false
+			  end
+		      end, Results2),
+		 io:format
+		   ("we found a timeout, other results=~p~n,other timeout=~p~n",
+		    [length(Results2),
+		     OtherTimeouts]),
+		 if
+		   not(OtherTimeouts) ->
+		     Results3 =
+		       filter_nonlocals
+			 (Results2,Source,NewerActions1,NewerState1,Conf),
+		     if
+		       Results3==[] ->
+			 [{NewerActions1,NewerState1}];
+		       true ->
+			 Results3
+		     end;
+		   true -> [{NewerActions1,NewerState1}]
+		 end;
+	       _ -> [{NewerActions1,NewerState1}]
+	     end;
+	   _ -> [{NewerActions1,NewerState1}]
+	 end
      end, 
      Transitions).
+
+filter_nonlocals(Results,Source,Actions,State,Conf) ->
+  lists:foldl
+    (fun ({Actions2,State2},Acc) ->
+	 case Actions2 of
+	   [Action2|_] ->
+	     case mce_erl_actions:get_source(Action2) of
+	       Source ->
+		 [{Actions++Actions2,State2}|Acc];
+	       _ ->
+		 Acc
+	     end;
+	   _ -> Acc
+	 end
+     end, [], Results).
+  
 
 collapse_locals(Actions,State,Conf) ->
   PartRestrict =
@@ -509,6 +585,9 @@ compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->
     orelse M1 =:= M2 andalso S1 > S2
     orelse M1 =:= M2 andalso S1 =:= S2 andalso Mic1 >= Mic2.
 
+compareTimes_gt(Now1,Now2) ->
+  (Now1 =/= Now2) andalso compareTimes_ge(Now1,Now2).
+
 milliSecondsToTimeStamp(MilliSeconds) ->
   Seconds = MilliSeconds div 1000,
   MegaSeconds = Seconds div 1000000,
@@ -667,14 +746,17 @@ doStep1(Exec, SavedState, Conf) ->
     runnable ->
       mce_erl_state:setState
 	(mce_erl_sysOS:setCurrentRunContext(Exec,SavedState)),
-      mce_erl_actions:record
-	(mce_erl_actions:mk_run
-	 (P#process.pid,P#process.expr)),
       case P#process.expr of
 	{?CONTEXTTAG,{Expr,[{?WASCHOICETAG,_}|Context]}} ->
-	  doRunChoice(P,Exec,Expr,Context,SavedState,Conf);
-	_ -> runUserCode(P#process.expr, Conf)
-      end;
+	  mce_erl_actions:record
+	    (mce_erl_actions:mk_choice
+	       (P#process.pid,P#process.expr));
+	_ ->
+	  mce_erl_actions:record
+	    (mce_erl_actions:mk_run
+	       (P#process.pid,P#process.expr))
+      end,
+      runUserCode(P#process.expr, Conf);
     sendable ->
       mce_erl_state:setState
 	(mce_erl_sysOS:setCurrentRunContext(Exec, SavedState)),
@@ -696,66 +778,21 @@ doStep1(Exec, SavedState, Conf) ->
       handleTerminated()
   end.
 
-%% Check that we avoid repeated reductions
-doable(runnable,_) -> true;
-doable(sendable,_) -> true;
-doable(exiting,_) -> true;
-doable({timer,Deadline},Time) -> compareTimes_ge(Time,Deadline);
-doable(receiveable,_) -> true;
-doable(dead,_) -> true;
-doable(_,_) -> false.
-
-%% To optimise we re-run runnable commands
-doRunChoice(P,Exec,Expr,Context,SavedState,Conf) ->
-  try mce_erl_stacks:execStack(Expr,Context) of
-      Value ->
-      State = mce_erl_state:getState(),
-      case mce_erl_stacks:isTagged(Value) of
-	true ->
-	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
-	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
-	  PNew = putProcess(P, NewExpr, State, Conf),
-	  case doable(PNew#process.status,State#system.time) of
-	    true ->
-	      NewExec = Exec#executable{process=PNew},
-	      RealState = 
-		#state{dict=State#system.dict,
-		       time=State#system.time,
-		       clocks=State#system.clocks,
-		       ether=State#system.ether},
-	      doStep1(NewExec,RealState,Conf);
-	    false -> 
-	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-		(putProcess(PNew,NewExpr,State,Conf), State)
-	  end;
-	false -> 
-	  exiting(P,Value,State,Conf)
-      end
-  catch
-    Error:Reason ->
-      maybe_notice_exit(Error, Reason, Conf),
-      throw({user, Error, Reason})
-  end.
-	  
 doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
   Pid = P#process.pid,
   Time = SavedState#state.time,
   NewState =
     case mce_conf:discrete_time(Conf) of
       true ->
-	case Time of
-	  {_,_,_} ->
-	    case compareTimes_ge(Deadline,Time) of
-	      true -> 
-		mce_erl_actions:record
-		  (mce_erl_actions:mk_timeout
-		   (Pid,
-		    minusTimeStamps(Deadline,Time))),
-		SavedState#state{time=Deadline};
-	      false ->
-		SavedState
-	    end;
-	  _ -> SavedState
+	case compareTimes_ge(Deadline,Time) of
+	  true -> 
+	    mce_erl_actions:record
+	      (mce_erl_actions:mk_timeout
+		 (Pid,
+		  minusTimeStamps(Deadline,Time))),
+	    SavedState#state{time=Deadline};
+	  false ->
+	    SavedState
 	end;
       _ -> SavedState
     end,
@@ -773,19 +810,8 @@ doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
 	  {NewValue, NewContext} = mce_erl_stacks:parseStack(Value),
 	  NewExpr = mce_erl:mk_context(NewValue, NewContext),
 	  PNew = putProcess(P, NewExpr, State, Conf),
-	  case doable(PNew#process.status,State#system.time) of
-	    true ->
-	      NewExec = Exec#executable{process=PNew},
-	      RealState = 
-		#state{dict=State#system.dict,
-		       time=State#system.time,
-		       clocks=State#system.clocks,
-		       ether=State#system.ether},
-	      doStep1(NewExec,RealState,Conf);
-	    false -> 
-	      mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
-		(putProcess(PNew,NewExpr,State,Conf), State)
-	  end;
+	  mce_erl_sysOS:mkStateFromCurrentExecutableWithProcess
+	    (putProcess(PNew,NewExpr,State,Conf), State);
 	false -> 
 	  exiting(P,Value,State,Conf)
       end

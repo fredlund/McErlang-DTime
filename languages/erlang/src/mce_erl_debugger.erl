@@ -1331,6 +1331,10 @@ printAction(Indent,Action,Stack) ->
 	indent(Indent)++
 	  "timeout "++
 	  io_lib:write(mce_erl_actions:get_timeout(Action));
+      choice ->
+	indent(Indent)++
+	  "choice: "++
+	  print_expr(0,mce_erl_actions:get_run_expr(Action));
       Other ->
 	indent(Indent)++
 	"??? Strange action type "++io_lib:write(Other)++" for action "++

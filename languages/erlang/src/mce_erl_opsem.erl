@@ -396,8 +396,8 @@ enumerateAllPossibles([P| Rest], Seen, State) ->
        enumerateAllPossibles(Rest, [P| Seen], State)]
   end.
 
-digOutChoice(E={?CHOICETAG, Arg}) ->
-  case Arg of
+digOutChoice(E={?CHOICETAG, _}) ->
+  case mce_erl:choice_alternatives(E) of
     N when is_integer(N), N>0 ->
       lists:map(fun (N) -> fun () -> N end end, lists:seq(1,N));
     L when is_list(L) ->

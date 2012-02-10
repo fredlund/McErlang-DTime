@@ -105,25 +105,34 @@ commit(Alternative, State, Conf) ->
 
 %% Combines transitions and commits
 transcommit(State,Conf) ->
+  {Actions,NewState} = collapse_locals([],State,Conf),
+  PartRestrict =
+    mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
+  {_Type,Transitions} =
+    int_transitions(State,Conf),
+  lists:map
+    (fun (Alternative) ->
+	 {NewerActions,NewerState} = commit(Alternative,State,Conf),
+	 collapse_locals(Actions++NewerActions,NewerState,Conf)
+     end, 
+     Transitions).
+
+collapse_locals(Actions,State,Conf) ->
   PartRestrict =
     mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
   {Type,Transitions} =
     int_transitions(State,Conf),
   case {Type,PartRestrict,Transitions} of
-    %% Merge local transitions if we are doing partial order reductions
-    {normal,true,[Alternative]} ->
-      {Actions,NewState} = commit(Alternative,State,Conf),
-      transcommit(NewState,Conf);
-    {normal,true,_} ->
-      [lists:foldl
-	 (fun (Alternative,{AccActions,AccState}) ->
-	     {NewActions,NewState} = commit(Alternative,AccState,Conf),
-	      {NewActions++AccActions,NewState}
-	  end, {[],State}, Transitions)];
+    {normal,true,Alternatives=[_|_]} ->
+      {NewerActions,NewerState} =
+	lists:foldl
+	  (fun (Alternative,{AccActions,AccState}) ->
+	       {NewActions,NewState} = commit(Alternative,AccState,Conf),
+	       {AccActions++NewActions,NewState}
+	   end, {Actions,State}, Transitions),
+      collapse_locals(NewerActions,NewerState,Conf);
     _ ->
-      lists:map
-	(fun (Alternative) -> commit(Alternative,State,Conf) end, 
-	 Transitions)
+      {Actions,State}
   end.
 
 moveIO(Flag, Received, State) ->
@@ -474,8 +483,8 @@ enumerateAllPossibles([P| Rest], Seen, State) ->
        enumerateAllPossibles(Rest, [P| Seen], State)]
   end.
 
-digOutChoice(E={?CHOICETAG, Arg}) ->
-  case Arg of
+digOutChoice(E={?CHOICETAG, _}) ->
+  case mce_erl:choice_alternatives(E) of
     N when is_integer(N), N>0 ->
       lists:map(fun (N) -> fun () -> N end end, lists:seq(1,N));
     L when is_list(L) ->

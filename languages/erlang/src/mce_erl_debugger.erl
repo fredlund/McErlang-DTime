@@ -430,7 +430,7 @@ pick(Pick, Transitions, Stack) ->
   end,
   Monitor = get_monitor(PickStack),
   State = get_sys(PickStack),
-  try take_transition(Pick, Transitions, PickStack, Monitor) of
+  try take_transition(Pick, Transitions, PickStack, State, Monitor) of
     {Actions, Sys} ->
       maybe_print_actions(Actions, PickStack),
       Depth = get_depth(PickStack),
@@ -486,12 +486,12 @@ gen_error_stack(State, Monitor, Stack) ->
       actions=Actions},
      Stack).
 
-take_transition(Pick, Transitions, Stack, Monitor) ->
+take_transition(Pick, Transitions, Stack, State, Monitor) ->
   case Pick of
     N when is_integer(N), N > 0 ->
       Transition = lists:nth(N, Transitions),
       ?LOG("picked transition ~p~n", [Transition]),
-      Result = mce_conf:commit(Transition, Monitor, mce_conf:get_conf()),
+      Result = mce_conf:commit(Transition, State, Monitor, mce_conf:get_conf()),
       ?LOG("commit result ~p~n", [Result]),
       Result;
     void ->
@@ -501,8 +501,10 @@ take_transition(Pick, Transitions, Stack, Monitor) ->
 	{ok, {Result, NewScheduler}} ->
 	  upd_scheduler(NewScheduler),
 	  case mce_behav_schedulerOps:willCommit(Scheduler) of
-	    true -> Result;
-	    false -> mce_conf:commit(Result, Monitor, mce_conf:get_conf())
+	    true ->
+	      Result;
+	    false ->
+	      mce_conf:commit(Result, Monitor, mce_conf:get_conf())
 	  end;
 	no_transitions ->
 	  throw(no_transition);
@@ -536,11 +538,11 @@ print_alternatives(Stack,N,[Transition|Rest],Default) ->
   end,
   print_alternatives(Stack,N+1,Rest,Default).
 
-print_alternative(Stack,{commMove,{FromObj,ToObj,{signal,_,Signal},_},_}) ->
+print_alternative(Stack,{commMove,{FromObj,ToObj,{signal,_,Signal},_}}) ->
   io:format
     ("node ~p:~n    receive signal ~p~n   from ~p",
      [ToObj, Signal, FromObj]);
-print_alternative(Stack, {exec, Exec, _State}) ->
+print_alternative(Stack, {exec,Exec}) ->
   P = Exec#executable.process,
   case P#process.status of
     runnable ->
@@ -857,17 +859,17 @@ find_action_in_transitions(Source,Act,[T|Rest],Seen) ->
       end
   end.
 
-transition_source({exec,Exec,_}) ->
+transition_source({exec,Exec}) ->
   (Exec#executable.process)#process.pid;
-transition_source({commMove,{FromNode,ToNode,_,_},_}) ->
+transition_source({commMove,{FromNode,ToNode,_,_}}) ->
   ToNode;
 transition_source(_) -> void.
 
 compatible_act_and_transition(Act,T) ->
   case T of
-    {commMove,_,_} -> 
+    {commMove,_} -> 
       true;
-    {exec,Exec,_} ->
+    {exec,Exec} ->
       Status = (Exec#executable.process)#process.status,
       case Status of
 	{timer,_} ->

@@ -24,6 +24,28 @@ dot(N) ->
       void,
       fun print_actions/1)).
 
+mc2(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={?MODULE,start,[N]},
+      is_infinitely_fast=false,
+      table=mce_table_hashWithActions,
+      well_behaved=true,
+      partial_order=true,
+      sends_are_sefs=true,
+      shortest=true,
+      save_table=true,
+      discrete_time=true}).
+
+dot2(N) ->
+  mc2(N),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
 start(N) ->
   self()!random:uniform(N),
   receive

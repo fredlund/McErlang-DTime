@@ -37,7 +37,7 @@
 -export([resolve_conf/1,resolve_user_conf/1,resolve_user_confs/1]).
 -export([default_conf/0]).
 -export([algorithm_init_args/1]).
--export([transitions/2,commit/2,commit/3,transcommit/2,prepare_run/1]).
+-export([transitions/2,commit/3,commit/4,transcommit/2,prepare_run/1]).
 -export([get_debugger/1,external_io_possible/1]).
 -export([sim_actions/1,notice_exits/1,fail_on_exit/1,terminate/1,random/1]).
 -export([wants_rpc/1,program/1,is_simulation/1,pathLimit/1,shortest/1]).
@@ -242,12 +242,12 @@ transcommit(State,Conf) ->
   Fun = Conf#mce_opts.transcommit,
   Fun(State,Conf).
 
-commit(Transition,Conf) ->
+commit(Transition,State,Conf) ->
   commit(Transition,void,Conf).
 
-commit(Transition,Monitor,Conf) ->
+commit(Transition,State,Monitor,Conf) ->
   Fun = Conf#mce_opts.commit,
-  Fun(Transition,Monitor,Conf).
+  Fun(Transition,State,Monitor,Conf).
 
 prepare_run(Conf) ->
   %% Set up seed

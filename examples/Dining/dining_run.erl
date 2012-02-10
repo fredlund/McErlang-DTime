@@ -163,8 +163,9 @@ print_action(Action) ->
       case mce_erl_actions:is_send(Action) of
 	true -> 
 	  io_lib:format
-	    ("sent ~p",
-	     [simplify_pids(mce_erl_actions:get_send_msg(Action))]);
+	    ("sent ~p to ~p",
+	     [simplify_pids(mce_erl_actions:get_send_msg(Action)),
+	      simplify_pids(mce_erl_actions:get_send_pid(Action))]);
 	false ->
 	  case mce_erl_actions:is_api_call(Action) of
 	    true ->

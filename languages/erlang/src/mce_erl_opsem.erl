@@ -475,11 +475,25 @@ enumerateAllPossibles([P| Rest], Seen, State) ->
   end.
 
 digOutChoice(E={?CHOICETAG, _}) ->
-  mce_erl:choice_alternatives(E);
+  case mce_erl:choice_alternatives(E) of
+    N when is_integer(N), N>0 ->
+      lists:map(fun (N) -> fun () -> N end end, lists:seq(1,N));
+    L when is_list(L) ->
+      mce_erl:choice_alternatives(E)
+  end;
 digOutChoice({?CONTEXTTAG, {E={?CHOICETAG, _}, Context}}) ->
-  lists:map
-    (fun (Alternative) -> mce_erl:mk_context(Alternative, Context) end,
-     mce_erl:choice_alternatives(E)).
+  case mce_erl:choice_alternatives(E) of
+    N when is_integer(N) ->
+      lists:map
+	(fun (Alternative) ->
+	     mce_erl:mk_context(fun () -> Alternative end, Context)
+	 end,
+	 lists:seq(1,N));
+    L when is_list(L) -> 
+      lists:map
+	(fun (Alternative) -> mce_erl:mk_context(Alternative, Context) end,
+	 mce_erl:choice_alternatives(E))
+  end.
 
 compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->
   M1 > M2

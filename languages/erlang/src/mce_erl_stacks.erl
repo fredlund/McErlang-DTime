@@ -32,6 +32,7 @@
 -module(mce_erl_stacks).
 
 -export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/1]).
+-export([mkSynch/1]).
 -export([execStack/2,isTagged/1]).
 -export([mkUrgent/1,mkSlow/1]).
 -include("emacros.hrl").
@@ -92,6 +93,8 @@ parseStack(Entry={?CHOICETAG,_},RestStack) ->
   {Entry,lists:reverse(RestStack)};
 parseStack(Entry={?SENDTAG,_},RestStack) ->
   {Entry,lists:reverse(RestStack)};
+parseStack(Entry={?SYNCHTAG,_},RestStack) ->
+  {Entry,lists:reverse(RestStack)};
 parseStack({?LETTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack]);
 parseStack(Entry={?WASCHOICETAG,Expr},RestStack) ->
@@ -135,6 +138,8 @@ execStack(Command,[{?URGENTTAG,_}|Rest]) ->
   execStack(Command,Rest);
 execStack(Command,[{?SLOWTAG,_}|Rest]) ->
   execStack(Command,Rest);
+execStack(Command,[{?SYNCHTAG,_}|Rest]) ->
+  execStack(Command,Rest);
 execStack(Command,OtherTag) ->
   io:format
     ("*** Error: malformed tag in execStack:~n~p~nfor command~n~p~n",
@@ -152,10 +157,77 @@ isTagged({MaybeTag,_}) ->
     ?RECVTAG -> true;
     ?URGENTTAG -> true;
     ?SLOWTAG -> true;
+    ?SYNCHTAG -> true;
     _ -> false
   end;
 isTagged(_) -> false.
 
+mkSynch(L) ->
+  {Inputs,Outputs,Nondets} =
+    lists:foldl
+      (fun (Event,{In,Out,Nd}) ->
+	   case Event of
+	     {in,{Port,GuardFun,ExecFun}} ->
+	       {add_event(Port,{GuardFun,ExecFun},In),Out,Nd};
+	     {out,{Port,GuardFun,Value,ExecFun}} ->
+	       case evaluate_guard(GuardFun) of
+		 true ->
+		   {In,add_event(Port,{Value,ExecFun},Out),Nd};
+		 false ->
+		   {In,Out,Nd}
+	       end;
+	     {nondet,{GuardFun,ExecFun}} ->
+	       case evaluate_guard(GuardFun) of
+		 true ->
+		   {In,Out,[ExecFun|Nd]};
+		 false ->
+		   {In,Out,Nd}
+	       end;
+	     Other -> 
+	       io:format("*** error: strange synchronisation ~p~n",[Event]),
+	       throw(bad)
+	   end
+       end, {[],[],[]}, L),
+  {?SYNCHTAG,{Inputs,Outputs,Nondets}}.
 
-    
+%% We should use general sorted list functions to do this
+add_event(Port,Value,Events) ->
+  add_event(Port,Value,Events,[]).
+
+add_event(Port,Value,[],Seen) ->
+  lists:reverse(Seen,[{Port,[Value]}]);
+add_event(Port,Value,[{Port1,Values}|Rest],Seen) ->
+  if
+    Port == Port1 ->
+      lists:reverse(Seen,[{Port1,[Value|Values]}|Rest]);
+    Port > Port1 ->
+      add_event(Port,Value,Rest,[{Port1,Values}|Seen]);
+    true ->
+      lists:reverse(Seen,[{Port,[Value]},{Port1,Values}|Rest])
+  end.
+
+evaluate_guard(GuardFun) ->
+  try GuardFun() of
+    Result ->
+      if
+	is_boolean(Result) -> Result;
+	true ->
+	  io:format
+	    ("*** Error: guard ~p does not evaluate to a boolean but to ~p~n",
+	     [GuardFun,Result]),
+	  throw(bad)
+      end
+  catch Cause:Reason ->
+      io:format
+	("*** Error: evaluating guard function~n~p~nthrows an exception ~p:~p~n",
+	 [GuardFun,Cause,Reason]),
+      Trace = erlang:get_stacktrace(),
+      io:format
+	("Stack trace:\n"++(mce_erl_debugger:printStackTrace(2,Trace))++"\n"),
+      throw(bad)
+  end.
+
+  
+	       
+	    
 

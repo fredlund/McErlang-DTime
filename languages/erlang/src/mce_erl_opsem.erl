@@ -332,9 +332,8 @@ part_sort_actions([Trans|Rest],Decisive,Normal) ->
 	  io:format("Strange process status ~p~n",[Process#process.status]),
 	  throw(bad)
       end;
-    _ -> 
-      io:format("Strange transition ~p~n",[Trans]),
-      throw(bad)
+    Other -> 
+      part_sort_actions(Rest,[Trans|Decisive],Normal)
   end.
 
 find_innermost({?CONTEXTTAG,{Value,_}}) ->
@@ -526,6 +525,8 @@ enumerateAllPossibles([], _, State) -> [];
 enumerateAllPossibles([P| Rest], Seen, State) ->
   case P#process.status of
     blocked ->
+      enumerateAllPossibles(Rest, [P| Seen], State);
+    {synch_blocked,_} ->
       enumerateAllPossibles(Rest, [P| Seen], State);
     choice ->
       Others = Seen ++ Rest,
@@ -912,6 +913,7 @@ isTagged({MaybeTag,_}) ->
     ?RECVTAG -> true;
     ?URGENTTAG -> true;
     ?SLOWTAG -> true;
+    ?SYNCHTAG -> true;
     _ -> false
   end;
 isTagged(_) -> false.
@@ -967,6 +969,8 @@ putProcess(P, Exec, State, Conf) ->
       P#process{status=choice, expr=Exec};
     {?SENDTAG, _} ->
       P#process{status=sendable, expr=Exec};
+    {?SYNCHTAG, S} ->
+      P#process{status={synch_blocked,S}, expr=Exec};
     {?EXITINGTAG, _} ->
       P#process{status=exiting, expr=Exec};
     _ ->

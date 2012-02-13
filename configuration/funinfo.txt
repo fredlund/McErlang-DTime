@@ -90,6 +90,7 @@
  {{mce_erl,pause,2},[rcv]},
  {{mce_erl,choice,1},[rcv]},
  {{mce_erl,recv,1},[rcv]},
+ {{mce_erl,synch,1},[rcv]},
  {{mce_erl,letexpr,1},[rcv]},
  {{mce_erl,tryexpr,1},[rcv]},
  {{mcerlang,nget,0},[snd]},

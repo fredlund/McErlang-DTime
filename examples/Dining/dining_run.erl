@@ -227,3 +227,17 @@ debug2(N) when N>0, is_integer(N) ->
       sends_are_sefs=true,
       save_table=true,
       discrete_time=true}).
+
+synch_debug2(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining_synch,start,[N]},
+      is_infinitely_fast=true,
+      table=mce_table_hashWithActions,
+      algorithm=mce_alg_debugger,
+      sim_actions=true,
+      well_behaved=true,
+      partial_order=true,
+      sends_are_sefs=true,
+      save_table=true,
+      discrete_time=true}).

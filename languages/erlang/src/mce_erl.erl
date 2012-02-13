@@ -37,6 +37,7 @@
 	 recv/1,recv_timeout/3,recv_timeout/1,recv_fun/1,is_recv/1,
 	 choice/1,choice/2,choice_alternatives/1,is_choice/1,
 	 was_choice/1,
+	 synch/1,
 	 pause/1,pause/2,pause_fun/1,pause_label/1,is_pause/1,
 	 send_sef/1,send_sef/2,send_sef_fun/1,send_sef_label/1,is_send_sef/1,
 	 exiting/1,is_exiting/1,exiting_reason/1,
@@ -434,5 +435,8 @@ caller_module([{ModuleSelf,_,_}|Rest],ModuleSelf) ->
   caller_module(Rest,ModuleSelf);
 caller_module([{Module,_,_}|_],_) ->
   Module.
-      
+
+synch(L) ->      
+  mce_erl_stacks:mkSynch(L).
+
       

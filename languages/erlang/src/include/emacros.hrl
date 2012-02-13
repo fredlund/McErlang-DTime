@@ -14,4 +14,5 @@
 -define(CONTEXTTAG,'_context_').
 -define(URGENTTAG,'_urgent_').
 -define(SLOWTAG,'_slow_').
+-define(SYNCHTAG,'_synch_').
 

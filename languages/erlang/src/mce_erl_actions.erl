@@ -56,7 +56,8 @@
 	 get_deliver_from/1,get_deliver_to/1,
 	 get_deliver_pid/1,get_deliver_msg/1,
 	 get_api_call_arguments/1,get_api_call_result/1]).
--export([get_synch_port/1,get_synch_value/1]).
+-export([get_synch_port/1,get_synch_value/1,
+	 get_synch_in_pid/1,get_synch_out_pid/1]).
 
 -export([record/1]).
 
@@ -349,6 +350,12 @@ get_synch_port(Action) ->
 
 get_synch_value(Action) ->
   element(4,mce_actions:get_argument(Action)).
+
+get_synch_in_pid(Action) ->
+  element(1,mce_actions:get_argument(Action)).
+
+get_synch_out_pid(Action) ->
+  element(2,mce_actions:get_argument(Action)).
 
 
 %% @private

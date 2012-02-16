@@ -130,14 +130,14 @@ print_states() ->
   lists:foreach(fun (State) -> io:format("~p~n",[State]) end, States).
 
 print_actions(Actions) ->
-  SourceStr =
-    case Actions of
-      [Action|_] ->
-	io_lib:format
-	  ("~p: ",[simplify_pids(mce_erl_actions:get_source(Action))]);
-      _ ->
-	""
-    end,
+  SourceStr = "",
+%%    case Actions of
+%%      [Action|_] ->
+%%	io_lib:format
+%%	  ("~p: ",[simplify_pids(mce_erl_actions:get_source(Action))]);
+%%      _ ->
+%%	""
+%%    end,
   ActionsStr =
     lists:foldl
       (fun (Action,Output) ->
@@ -189,9 +189,13 @@ print_action(Action) ->
 		    true ->
 		      Port = mce_erl_actions:get_synch_port(Action),
 		      Value = mce_erl_actions:get_synch_value(Action),
+		      Pid1 = mce_erl_actions:get_synch_in_pid(Action),
+		      Pid2 = mce_erl_actions:get_synch_out_pid(Action),
 		      io_lib:format
-			("~p!~p",
-			 [simplify_pids(Port),
+			("~p->~p: ~p!~p",
+			 [simplify_pids(Pid2),
+			  simplify_pids(Pid1),
+			  simplify_pids(Port),
 			  simplify_pids(Value)]);
 		    false ->
 		      case mce_erl_actions:get_name(Action) of

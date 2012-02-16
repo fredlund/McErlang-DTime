@@ -107,36 +107,102 @@ commit(Alternative, State, Conf) ->
 transcommit(State,Conf) ->
   lists:usort(transcommit_int(false,State,Conf)).
   
-filter_nonprogressing_synchs(Transitions,State,Conf) ->
-  filter_nonprogressing_synchs(Transitions,[],State,length(Transitions)-1,Conf).
+%% Self-sends??
 
-filter_nonprogressing_synchs([],_,State,NumTransitions,Conf) -> [];
-filter_nonprogressing_synchs([Transition|Rest],Seen,State,NumTransitions,Conf) ->
+filter_nonprogressing(Transitions,State,Conf) ->
+  filter_nonprogressing(Transitions,[],State,length(Transitions)-1,Transitions,Conf).
+
+filter_nonprogressing([],_,State,NumTransitions,Transitions,Conf) -> [];
+filter_nonprogressing([Transition|Rest],Seen,State,NumTransitions,Transitions,Conf) ->
   Check = Seen++Rest,
-  case Transition of
-    {{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes} ->
-      case not(occurs(P,Check)) andalso not(occurs(Q,Check)) of
+  case affected(Transition,Check,State,Conf) of
+    all -> [Transition|filter_nonprogressing(Rest,[Transition|Seen],State,NumTransitions,Transitions,Conf)];
+    {some,L} ->
+      case not(occurs(L,Check,State,Conf)) of
 	true ->
 	  {_,NewState0} = doStep(Transition,State,Conf),
 	  {_,NewState} = collapse_locals([],NewState0,Conf),
 	  {_,NewTransitions} = int_transitions(NewState,Conf),
 	  if
 	    length(NewTransitions) > NumTransitions ->
-	      [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)];
+	      [Transition|filter_nonprogressing(Rest,[Transition|Seen],State,NumTransitions,Transitions,Conf)];
 	    true -> 
-	      filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)
+	      filter_nonprogressing(Rest,[Transition|Seen],State,NumTransitions,Transitions,Conf)
 	  end;
-	false -> [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)]
-      end;
-    _ -> [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)]
+	false -> [Transition|filter_nonprogressing(Rest,[Transition|Seen],State,NumTransitions,Transitions,Conf)]
+      end
   end.
 
+affected({{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes},Transitions,State,Conf) ->
+  {some,[P,Q]};
+affected({exec,Exec},Transitions,State,Conf) ->
+  P = Exec#executable.process,
+  Pid = P#process.pid,
+  Innermost = find_innermost(P#process.expr),
+  case Innermost of
+    {?SENDTAG,{{mcerlang,nget,_},_}} ->
+      {some,[Pid]};
+    {?SENDTAG,{{mcerlang,send,_},{_,_,[Pid2|_]}}} ->
+      Enabled = find_all_pid_transitions(Pid2,Transitions),
+      case can_receive(Pid2,Enabled,State,Conf) of
+	true -> {some,[Pid,Pid2]};
+	false -> {some,[Pid]}
+      end;
+    _ ->
+      case P#process.status of
+	%% Probably highly incorrect
+	{timer,Deadline} -> {some,[Pid]};
+	_ -> all
+      end
+  end;
+affected(_,_,_,_) ->
+  all.
+
+can_receive(Pid,[],State,Conf) -> false;
+can_receive(Pid,[Transition|Rest],State,Conf) ->
+  io:format("~p: can_receive:~n~p~n",[Pid,Transition]),
+  {_,NewState} = doStep(Transition,State,Conf),
+  io:format("next state is ~n~p~n~n",[NewState]),
+  {_,Transitions} = int_transitions(NewState,Conf),
+  io:format("length of transitions is ~p~n",[length(Transitions)]),
+  lists:any
+    (fun (Trans) ->
+	 case Trans of
+	   {exec,Exec} ->
+	     P = Exec#executable.process,
+	     io:format("trans pid is ~p~n",[P#process.pid]),
+	     if
+	       P#process.pid==Pid andalso P#process.status==receivable ->
+		 io:format("Checking trans~n~p~n",[Trans]),
+		 {_,NewState2} = doStep(Trans,NewState,Conf),
+		 {_,Transitions2} = int_transitions(NewState2,Conf),
+		 Result=find_all_pid_transitions(Pid,Transitions2),
+		 io:format("Result is~n~p~n",[Result]),
+		 Result=/=[];
+	       true ->
+		 false
+	     end;
+	   _ -> io:format("transition is ~p~n",[Trans]), false
+	 end
+     end, Transitions) orelse can_receive(Pid,Rest,State,Conf).
+
+find_all_pid_transitions(Pid,Transitions) ->
+  lists:filter
+    (fun (Transition) ->
+	 case Transition of
+	   {{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes} ->
+	     Pid==P#process.pid orelse Pid==Q#process.pid;
+	   {exec,Exec} ->
+	     Pid==((Exec#executable.process)#process.pid);
+	   _ ->
+	     false
+	 end
+     end, Transitions).
 
 help_print_trans({{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes}) ->
   io_lib:format
     ("transition ~p",
      [{synch,P#process.pid,Q#process.pid,Port,Value}]).
-
 
 help_print_transs([]) -> "";
 help_print_transs([Transition]) ->
@@ -145,16 +211,17 @@ help_print_transs([Transition|Rest]) ->
   help_print_trans(Transition)++"\n"++
     help_print_transs(Rest).
 
-occurs(P,[]) -> false;
-occurs(P,[Transition|Rest]) ->
-  case Transition of
-    {{synch,Port,P1,{ExecInFun,Value},P2,ExecOutFun,Others},Node,OtherNodes} ->
-      P==P1 orelse P==P2 orelse occurs(P,Rest);
-    {exec, Exec} ->
-      Process = Exec#executable.process,
-      P#process.pid==Process#process.pid orelse occurs(P,Rest);
-    true ->
-      occurs(P,Rest)
+occurs(Pids,Transitions,State,Conf) -> 
+  PidSet = sets:from_list(Pids),
+  occurs1(PidSet,Transitions,Transitions,State,Conf).
+
+occurs1(PidSet,[],Transitions,State,Conf) -> false;
+occurs1(PidSet,[Transition|Rest],Transitions,State,Conf) ->
+  case affected(Transition,Transitions,State,Conf) of
+    all -> true;
+    {some,L} -> 
+      sets:size(sets:intersection(PidSet,sets:from_list(L)))>0
+	orelse occurs1(PidSet,Rest,Transitions,State,Conf)
   end.
 
 transcommit_int(Rpt,State,Conf) ->
@@ -165,7 +232,7 @@ transcommit_int(Rpt,State,Conf) ->
   {_Type,Transitions0} =
     int_transitions(NewState,Conf),
   Transitions =
-    filter_nonprogressing_synchs(Transitions0,State,Conf),
+    filter_nonprogressing(Transitions0,State,Conf),
   lists:flatmap
     (fun (Alternative) ->
 	 {NewerActions,NewerState} =

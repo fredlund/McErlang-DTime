@@ -169,11 +169,12 @@ print_action(Action) ->
 	false ->
 	  case mce_erl_actions:is_api_call(Action) of
 	    true ->
-	      io_lib:format
-		("~p(~p) -> ~p",
-		 [mce_erl_actions:get_api_call_fun(Action),
-		  mce_erl_actions:get_api_call_arguments(Action),
-		  mce_erl_actions:get_api_call_result(Action)]);
+	      %%io_lib:format
+	      %%  ("~p(~p) -> ~p",
+	      %%	 [mce_erl_actions:get_api_call_fun(Action),
+	      %%  mce_erl_actions:get_api_call_arguments(Action),
+	      %%  mce_erl_actions:get_api_call_result(Action)]);
+	      "";
 	    false ->
 	      case mce_erl_actions:is_timeout(Action) of
 		true ->
@@ -184,9 +185,21 @@ print_action(Action) ->
 		      io_lib:format("timeout",[])
 		  end;
 		false ->
-		  case mce_erl_actions:get_name(Action) of
-		    run -> "";
-		    Name -> io_lib:format("~p",[Name])
+		  case mce_erl_actions:is_synch(Action) of
+		    true ->
+		      Port = mce_erl_actions:get_synch_port(Action),
+		      Value = mce_erl_actions:get_synch_value(Action),
+		      io_lib:format
+			("~p!~p",
+			 [simplify_pids(Port),
+			  simplify_pids(Value)]);
+		    false ->
+		      case mce_erl_actions:get_name(Action) of
+			run -> "";
+			spawn -> "";
+			died -> "";
+			Name -> io_lib:format("~p",[Name])
+		      end
 		  end
 	      end
 	  end
@@ -241,3 +254,63 @@ synch_debug2(N) when N>0, is_integer(N) ->
       sends_are_sefs=true,
       save_table=true,
       discrete_time=true}).
+
+mc3(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining_synch,start,[N]},
+      is_infinitely_fast=false,
+      table=mce_table_hashWithActions,
+      sends_are_sefs=true,
+      shortest=true,
+      well_behaved=true,
+      partial_order=true,
+      save_table=true,
+      discrete_time=true}).
+
+dot3(N) ->
+  mc3(N),
+  file:write_file
+    ("hej.dot",
+     mce_dot:from_table
+     (mce_result:table(mce:result()),
+      void,
+      fun print_actions/1)).
+
+mc3c(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining_synch,start,[N]},
+      is_infinitely_fast=false,
+      table={mce_table_bitHash,[10000000]},
+      sends_are_sefs=true,
+      shortest=true,
+      well_behaved=true,
+      partial_order=true,
+      discrete_time=true}).
+
+mc3cd(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining_synch,start,[N]},
+      is_infinitely_fast=false,
+      table={mce_table_bitHash,[10000000]},
+      algorithm={mce_alg_safety_parallel,4},
+      sends_are_sefs=true,
+      shortest=true,
+      well_behaved=true,
+      partial_order=true,
+      discrete_time=true}).
+
+mc3e(N) when N>0, is_integer(N) ->
+  mce:start
+    (#mce_opts
+     {program={dining_synch,start,[N]},
+      is_infinitely_fast=false,
+      algorithm={mce_alg_safety_parallel,4},
+      sends_are_sefs=true,
+      well_behaved=true,
+      discrete_time=true,
+      partial_order=true}).
+
+

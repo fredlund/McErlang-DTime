@@ -54,9 +54,15 @@ from_table(Table) ->
   from_table(Table, pp_state(), pp_action()).
 from_table(Table, StatePrinter, ActionPrinter) ->
   {ok, States} = mce_behav_tableOps:states_to_list(Table),
+  InitState = mce_behav_tableOps:get_initial_state(Table),
+  States1 =
+    case lists:member(InitState,States) of
+      true -> [InitState|lists:delete(InitState,States)];
+      false -> States
+    end,
   {ok, Transitions} = mce_behav_tableOps:transitions_to_list(Table),
   {ok, {StateDict,TransitionDict}} =
-    lists_to_dot_dicts(States,fun id_fun/1,Transitions,fun id_fun/1),
+    lists_to_dot_dicts(States1,fun id_fun/1,Transitions,fun id_fun/1),
   build_dot_digraph(StateDict,TransitionDict,StatePrinter,ActionPrinter).
 
 from_stack(Stack) ->
@@ -194,12 +200,26 @@ dot_build(VDict,EDict,StatePrinter,ActionPrinter) ->
         end,dict:to_list(EDict)),
   Vertices++Edges.
 
-attributes(void,_Object) ->
-  "";
+attributes(Printer,Object={0,_}) ->
+  attributes(void,Object,["shape=doublecircle"]);
 attributes(Printer,Object) ->
-  case apply(Printer,[Object]) of
+  attributes(Printer,Object,[]).
+
+attributes(Printer,Object,SavedAttributes) ->
+  Attributes =
+    if
+      Printer==void ->
+	SavedAttributes;
+      true ->
+	case {SavedAttributes,apply(Printer,[Object])} of
+	  {_,""} -> SavedAttributes;
+	  {"",Other} -> Other;
+	  {Other,_} -> Other++", "++SavedAttributes
+	end
+    end,
+  case Attributes of
     "" -> "";
-    Attributes -> dot_quote(" ["++Attributes++"]")
+    _ -> dot_quote(" ["++Attributes++"]")
   end.
 
 dot_quote(String) -> String.

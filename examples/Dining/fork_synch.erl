@@ -11,15 +11,7 @@ free() ->
     ([{in,
        {{grab,self()},
 	fun (X) -> true end,
-	fun (Philosopher) -> 
-	    mce_erl:synch
-	      ([{out,
-		 {{fork,Philosopher},
-		  fun () -> true end,
-		  ok,
-		  fun () -> taken()
-		  end}}])
-	end}}]).
+	fun (Philosopher) -> taken() end}}]).
 
 taken() ->
   mce_erl:synch

@@ -107,13 +107,65 @@ commit(Alternative, State, Conf) ->
 transcommit(State,Conf) ->
   lists:usort(transcommit_int(false,State,Conf)).
   
+filter_nonprogressing_synchs(Transitions,State,Conf) ->
+  filter_nonprogressing_synchs(Transitions,[],State,length(Transitions)-1,Conf).
+
+filter_nonprogressing_synchs([],_,State,NumTransitions,Conf) -> [];
+filter_nonprogressing_synchs([Transition|Rest],Seen,State,NumTransitions,Conf) ->
+  Check = Seen++Rest,
+  case Transition of
+    {{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes} ->
+      case not(occurs(P,Check)) andalso not(occurs(Q,Check)) of
+	true ->
+	  {_,NewState0} = doStep(Transition,State,Conf),
+	  {_,NewState} = collapse_locals([],NewState0,Conf),
+	  {_,NewTransitions} = int_transitions(NewState,Conf),
+	  if
+	    length(NewTransitions) > NumTransitions ->
+	      [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)];
+	    true -> 
+	      filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)
+	  end;
+	false -> [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)]
+      end;
+    _ -> [Transition|filter_nonprogressing_synchs(Rest,[Transition|Seen],State,NumTransitions,Conf)]
+  end.
+
+
+help_print_trans({{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes}) ->
+  io_lib:format
+    ("transition ~p",
+     [{synch,P#process.pid,Q#process.pid,Port,Value}]).
+
+
+help_print_transs([]) -> "";
+help_print_transs([Transition]) ->
+  help_print_trans(Transition);
+help_print_transs([Transition|Rest]) ->
+  help_print_trans(Transition)++"\n"++
+    help_print_transs(Rest).
+
+occurs(P,[]) -> false;
+occurs(P,[Transition|Rest]) ->
+  case Transition of
+    {{synch,Port,P1,{ExecInFun,Value},P2,ExecOutFun,Others},Node,OtherNodes} ->
+      P==P1 orelse P==P2 orelse occurs(P,Rest);
+    {exec, Exec} ->
+      Process = Exec#executable.process,
+      P#process.pid==Process#process.pid orelse occurs(P,Rest);
+    true ->
+      occurs(P,Rest)
+  end.
+
 transcommit_int(Rpt,State,Conf) ->
   {Actions,NewState} =
     collapse_locals([],State,Conf),
   PartRestrict =
     mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
-  {_Type,Transitions} =
+  {_Type,Transitions0} =
     int_transitions(NewState,Conf),
+  Transitions =
+    filter_nonprogressing_synchs(Transitions0,State,Conf),
   lists:flatmap
     (fun (Alternative) ->
 	 {NewerActions,NewerState} =
@@ -267,6 +319,10 @@ allPossibilities(State, Conf) ->
 	io:format("Have error ~p:~p at state~n  ~p~n", [Error, Pattern, State]),
 	throw(bad)
     end,
+
+  AllSynchMoves =
+    allSynchMoves(State#state.nodes,[],State),
+
   AllCommMovesPossibilities =
     allCommMovesPossibles(orddict:to_list(State#state.ether), [], State),
   AllRunPossibilities =
@@ -277,6 +333,7 @@ allPossibilities(State, Conf) ->
       _ -> []
     end,
   AllPossibilities =
+    AllSynchMoves ++
     AllCommMovesPossibilities ++
     AllTerminatePossibilities ++
     AllRunPossibilities,
@@ -388,7 +445,7 @@ timeRestrict(State, Possibilities, Conf) ->
 		   end;
 		 _ -> add_entry(Entry, IsUrgentState, Acc)
 	       end;
-	     Other -> {Urgent,[Entry|Slow],TimerEntries}
+	     Other -> {Urgent,[Entry|Slow],TimeEnt}
 	   end
        end, {[],[],{void,[]}}, Possibilities),
   if
@@ -489,6 +546,81 @@ allNodeMoves(F,[Node|RestNodes],Seen,State) ->
        F(Node#node.processes,[],State)),
   NodeMoves++allNodeMoves(F,RestNodes,[Node|Seen],State).
 
+allSynchMoves([],_,State) -> [];  
+allSynchMoves([Node|Nodes],Seen,State) ->
+  lists:map
+    (fun (Move) -> {Move,Node,Seen++Nodes} end,
+     allSynchMovesInNode(Node#node.processes,[],Node,State)).
+
+allSynchMovesInNode([],_,_,_) -> [];
+allSynchMovesInNode([P|Rest],Others,Node,State) -> 
+  case P#process.status of
+    {synch_blocked,S} ->
+      allSynchCombinations(P,Rest,Others,Node,State)++
+	allSynchMovesInNode(Rest,[P|Others],Node,State);
+    _ ->
+      allSynchMovesInNode(Rest,[P|Others],Node,State)
+  end.
+
+allSynchCombinations(P,[],_,_,_) -> [];
+allSynchCombinations(P,[First|Rest],Others,Node,State) ->
+  {synch_blocked,S} = P#process.status,
+  case First#process.status of
+    {synch_blocked,S1} ->
+      synch(ins(S),P,outs(S1),First,Rest++Others,Node,State)++
+      synch(ins(S1),First,outs(S),P,Rest++Others,Node,State)++
+	allSynchCombinations(P,Rest,[First|Others],Node,State);
+    _ ->
+      allSynchCombinations(P,Rest,Others,Node,State)
+  end.
+
+synch([],_,_,_,_,_,_) -> [];
+synch(_,_,[],_,_,_,_) -> [];
+synch([{Port1,Offers1}|RestP],P,[{Port2,Offers2}|RestQ],Q,Others,Node,State) ->
+  if 
+    Port1==Port2 ->
+      merge_offers(Port1,Offers1,Offers2,P,Q,Others,Node,State)++
+	synch(RestP,P,RestQ,Q,Others,Node,State);
+    Port1<Port2 ->
+      synch(RestP,P,[{Port2,Offers2}|RestQ],Q,Others,Node,State);
+    true ->
+      synch([{Port1,Offers1}|RestP],P,RestQ,Q,Others,Node,State)
+  end.
+
+ins({Ins,_,_}) -> Ins.
+outs({_,Outs,_}) -> Outs.
+
+merge_offers(_,[],OutOffers,P,Q,_,Node,State) -> [];
+merge_offers(Port,[FirstOffer|RestOffers],OutOffers,P,Q,Others,Node,State) ->
+  merge_offers1(Port,FirstOffer,OutOffers,P,Q,Others,Node,State)++
+    merge_offers(Port,RestOffers,OutOffers,P,Q,Others,Node,State).
+
+merge_offers1(_,InOffers,[],P,Q,_,Node,State) -> [];
+merge_offers1(Port,InOffer,[FirstOutOffer|RestOutOffers],P,Q,Others,Node,State) ->
+  {GuardFun,ExecInFun} = InOffer,
+  {Value,ExecOutFun} = FirstOutOffer,
+  try GuardFun(Value) of
+      true ->
+      [{synch,
+	Port,
+	P,{ExecInFun,Value},
+	Q,ExecOutFun,
+	Others}|
+       merge_offers1(Port,InOffer,RestOutOffers,P,Q,Others,Node,State)];
+      false ->
+      merge_offers1(Port,InOffer,RestOutOffers,P,Q,Others,Node,State);
+      Other ->
+      throw(bad)
+  catch Cause:Reason ->
+      io:format
+	("*** Error: evaluating guard function~n~p~nthrows an exception ~p:~p~n",
+	 [GuardFun,Cause,Reason]),
+      Trace = erlang:get_stacktrace(),
+      io:format
+	("Stack trace:\n"++(mce_erl_debugger:printStackTrace(2,Trace))++"\n"),
+      throw(bad)
+  end.
+  
 allCommMovesPossibles([],Seen,_) -> [];
 allCommMovesPossibles([NodeSpec|Rest],Seen,S) ->
   case NodeSpec of
@@ -633,7 +765,30 @@ doStep({exec, Exec}, SavedState, Conf) ->
 	   [Process, Error, Reason]),
       Pid = (Exec#executable.process)#process.pid,
       handle_exception(Process, Pid, Error, Reason, Conf)
-  end.
+  end;
+doStep({{synch,Port,P,{ExecInFun,Value},Q,ExecOutFun,Others},Node,OtherNodes},State,Conf) ->
+  initActions(),
+  ContextP =
+    case P#process.expr of
+      {?CONTEXTTAG,{_,CntxtP}} -> CntxtP;
+      _ -> []
+    end,
+  ContextQ =
+    case Q#process.expr of
+      {?CONTEXTTAG,{_,CntxtQ}} -> CntxtQ;
+      _ -> []
+    end,
+  mce_erl_actions:record
+    (mce_erl_actions:mk_synch(Port,Value,P#process.pid,Q#process.pid)),
+  NewP =
+    P#process
+    {expr=mce_erl:mk_context({ExecInFun,[Value]},ContextP),
+     status=runnable},
+  NewQ =
+    Q#process
+    {expr=mce_erl:mk_context({ExecOutFun,[]},ContextQ),
+     status=runnable},
+  {getActions(), mce_erl_sysOS:mkStateFromProcesses(NewP,NewQ,Others,Node,OtherNodes,State)}.
 
 maybe_notice_exit(Exception, Reason, Conf) ->
   NormalExit =

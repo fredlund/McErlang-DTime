@@ -38,11 +38,13 @@
 -export([mk_choice/2]).
 -export([mk_crashing/4,mk_terminated/2,mk_api_call/4,mk_deliver/4]).
 -export([mk_timeout/2,get_timeout/1]).
+-export([mk_synch/4]).
 
 -export([type/1]).
 -export([is_send/1,is_probe/1,is_input/1,is_io/1,is_recv/1,is_run/1,is_died/1]).
 -export([is_output/1,is_spawn/1,is_crashing/1,is_terminated/1,is_api_call/1]).
 -export([is_deliver/1,is_timeout/1,is_choice/1]).
+-export([is_synch/1]).
 
 -export([get_send_pid/1,get_send_resolved_pid/1,get_send_msg/1,
 	 get_probe/1,get_probe_label/1,get_probe_term/1,
@@ -54,6 +56,7 @@
 	 get_deliver_from/1,get_deliver_to/1,
 	 get_deliver_pid/1,get_deliver_msg/1,
 	 get_api_call_arguments/1,get_api_call_result/1]).
+-export([get_synch_port/1,get_synch_value/1]).
 
 -export([record/1]).
 
@@ -331,6 +334,22 @@ mk_timeout(Source,Deadline) ->
 
 get_timeout(Action) ->
   element(1,mce_actions:get_argument(Action)).
+
+mk_synch(Port,Value,P,Q) ->
+  mce_actions:mk(P,synch,{P,Q,Port,Value}).
+
+is_synch(Action) ->
+  case mce_actions:is_action(Action) of
+    true -> get_name(Action)=:=synch;
+    false -> false
+  end.
+
+get_synch_port(Action) ->
+  element(3,mce_actions:get_argument(Action)).
+
+get_synch_value(Action) ->
+  element(4,mce_actions:get_argument(Action)).
+
 
 %% @private
 record(Action) ->

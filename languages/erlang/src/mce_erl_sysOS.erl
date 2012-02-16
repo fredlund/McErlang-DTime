@@ -75,6 +75,7 @@
 	 mkStateFromCurrentNode/1,
 	 mkStateFromCurrentExecutableWithProcess/2,
 	 mkStateFromCurrentExecutable/1,
+	 mkStateFromProcesses/6,
 	 sendMsgToPid/3,
 	 addMsgToState/3,
 	 addClock/2,
@@ -647,6 +648,10 @@ mkStateFromCurrentExecutableWithProcess(Process, State) ->
 	 clocks=mce_erl_state:getClocks(State),
 	 nodes=Nodes,
 	 ether=mce_erl_state:getEther(State)}.
+
+mkStateFromProcesses(P1,P2,Others,Node,OtherNodes,State) ->
+  NewNode = Node#node{processes=[P1,P2|Others]},
+  State#state{nodes=[NewNode|OtherNodes]}.
 
 %%% Save state after executing in process context, where the current process
 %%% has died

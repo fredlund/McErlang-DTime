@@ -575,6 +575,13 @@ print_alternative(Stack, {exec,Exec}) ->
 	("*** weird status of executable~n ~p ~nhas wierd status ~p", 
 	 [Exec, Other])
   end;
+print_alternative(Stack,{{synch,Port,P,{_,Value},Q,_,_},_,_}) ->
+  io:format
+    ("synch ~p on port ~p between process ~s and ~s~n",
+     [Value,
+      Port,
+      symbolicProcessName(P#process.pid, Stack),
+      symbolicProcessName(Q#process.pid, Stack)]);
 print_alternative(Stack, Other) ->
   io:format("Don't know how to print alternative~n  ~p~n", [Other]).
 

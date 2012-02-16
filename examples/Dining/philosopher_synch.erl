@@ -28,13 +28,7 @@ grab_fork(Fork) ->
        {{grab,Fork},
 	fun () -> true end,
 	self(),
-	fun () ->
-	    mce_erl:synch
-	      ([{in,
-		 {fork,
-		  fun (X) -> true end,
-		  fun (X) -> fork end}}])
-	end}}]).
+	fun () -> ok end}}]).
 
 release_forks([]) -> ok;
 release_forks([Fork|Forks]) ->

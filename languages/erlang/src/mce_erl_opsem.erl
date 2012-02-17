@@ -148,10 +148,11 @@ affected({exec,Exec},Transitions,State,Conf) ->
 	true -> {some,[Pid,Pid2]};
 	false -> {some,[Pid]}
       end;
+    {?CHOICETAG,_} ->
+      {sone,[Pid]};
     _ ->
       case P#process.status of
-	%% Probably highly incorrect
-	{timer,Deadline} -> {some,[Pid]};
+	{timer,{0,0,0}} -> {some,[Pid]};
 	_ -> all
       end
   end;
@@ -160,29 +161,31 @@ affected(_,_,_,_) ->
 
 can_receive(Pid,[],State,Conf) -> false;
 can_receive(Pid,[Transition|Rest],State,Conf) ->
-  io:format("~p: can_receive:~n~p~n",[Pid,Transition]),
+  %%io:format("~p: can_receive:~n~p~n",[Pid,Transition]),
   {_,NewState} = doStep(Transition,State,Conf),
-  io:format("next state is ~n~p~n~n",[NewState]),
+  %%io:format("next state is ~n~p~n~n",[NewState]),
   {_,Transitions} = int_transitions(NewState,Conf),
-  io:format("length of transitions is ~p~n",[length(Transitions)]),
+  %%io:format("length of transitions is ~p~n",[length(Transitions)]),
   lists:any
     (fun (Trans) ->
 	 case Trans of
 	   {exec,Exec} ->
 	     P = Exec#executable.process,
-	     io:format("trans pid is ~p~n",[P#process.pid]),
+	     %%io:format("trans pid is ~p~n",[P#process.pid]),
 	     if
 	       P#process.pid==Pid andalso P#process.status==receivable ->
-		 io:format("Checking trans~n~p~n",[Trans]),
+		 %%io:format("Checking trans~n~p~n",[Trans]),
 		 {_,NewState2} = doStep(Trans,NewState,Conf),
 		 {_,Transitions2} = int_transitions(NewState2,Conf),
 		 Result=find_all_pid_transitions(Pid,Transitions2),
-		 io:format("Result is~n~p~n",[Result]),
+		 %%io:format("Result is~n~p~n",[Result]),
 		 Result=/=[];
 	       true ->
 		 false
 	     end;
-	   _ -> io:format("transition is ~p~n",[Trans]), false
+	   _ ->
+	     %%io:format("transition is ~p~n",[Trans]),
+	     false
 	 end
      end, Transitions) orelse can_receive(Pid,Rest,State,Conf).
 
@@ -232,7 +235,10 @@ transcommit_int(Rpt,State,Conf) ->
   {_Type,Transitions0} =
     int_transitions(NewState,Conf),
   Transitions =
-    filter_nonprogressing(Transitions0,State,Conf),
+    case filter_nonprogressing(Transitions0,State,Conf) of
+      [] -> Transitions0;
+      Other -> Other
+    end,
   lists:flatmap
     (fun (Alternative) ->
 	 {NewerActions,NewerState} =
@@ -242,7 +248,13 @@ transcommit_int(Rpt,State,Conf) ->
 	 case NewerActions of
 	   [Action|_] ->
 	     Source = mce_erl_actions:get_source(Action),
-	     case {Rpt,mce_erl_actions:is_choice(Action),
+	     io:format
+	       ("Rpt=~p is_choice:~p is_timeout:~p~n",
+		[Rpt,
+		 mce_erl_actions:is_choice(Action),
+		 mce_erl_actions:is_timeout(Action)]),
+	     case {Rpt,
+		   mce_erl_actions:is_choice(Action),
 		   mce_erl_actions:is_timeout(Action)} of
 	       {false,true,false} ->
 		 Results1 =

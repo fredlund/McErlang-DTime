@@ -669,16 +669,31 @@ transform_receive(C, Vars, CR) ->
 	     CR#cRrec.compileRec) of
 	    false -> {C, []};
 	    true -> 
-	      PauseFunName =
-		genAtom(),
-	      NeededPauseVars =
-		ordsets:intersection(Vars, cerl_trees:free_variables(C)),
-	      PauseFun =
-		{cerl:c_fname
-		 (cerl:atom_val(PauseFunName),
-		  length(NeededPauseVars)),
-		 try_to_find_lineno([C,Module,Name]),
-		 cerl:c_fun(to_vars(ordsets:to_list(NeededPauseVars)),C)},
+%%	      PauseFunName =
+%%		genAtom(),
+%%	      NeededPauseVars =
+%%		ordsets:intersection(Vars, cerl_trees:free_variables(C)),
+%%	      PauseFun =
+%%		{cerl:c_fname
+%%		 (cerl:atom_val(PauseFunName),
+%%		  length(NeededPauseVars)),
+%%		 try_to_find_lineno([C,Module,Name]),
+%%		 cerl:c_fun(to_vars(ordsets:to_list(NeededPauseVars)),C)},
+%%	      PauseExpr =
+%%		copy_ann
+%%		  (C,
+%%		   cerl:c_call
+%%		   (cerl:c_atom(mce_erl_stacks),
+%%		    cerl:c_atom(mkSend),
+%%		    [cerl:c_tuple
+%%		     ([Module,
+%%		       Name,
+%%		       cerl:c_int(cerl:call_arity(C))]),
+%%		     cerl:c_tuple
+%%		     ([cerl:c_atom(CR#cRrec.moduleName),
+%%		       PauseFunName,
+%%		       c_list(to_vars(ordsets:to_list(NeededPauseVars)))])])),
+%%	       {PauseExpr,[PauseFun]}
 	      PauseExpr =
 		copy_ann
 		  (C,
@@ -690,10 +705,8 @@ transform_receive(C, Vars, CR) ->
 		       Name,
 		       cerl:c_int(cerl:call_arity(C))]),
 		     cerl:c_tuple
-		     ([cerl:c_atom(CR#cRrec.moduleName),
-		       PauseFunName,
-		       c_list(to_vars(ordsets:to_list(NeededPauseVars)))])])),
-	       {PauseExpr,[PauseFun]}
+		     ([Module,Name,c_list(cerl:call_args(C))])])),
+	       {PauseExpr,[]}
 	  end;
 	_ -> {C,[]}
       end;

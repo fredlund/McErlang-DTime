@@ -171,7 +171,7 @@ print_action(Action) ->
 		  end;
 		false ->
 		  case mce_erl_actions:get_name(Action) of
-		    run -> "";
+		    run -> "run";
 		    Name -> io_lib:format("~p",[Name])
 		  end
 	      end
@@ -201,7 +201,8 @@ collapse_actions(Actions) ->
 collapse_actions([],Actions) ->
   lists:reverse(Actions);
 collapse_actions([Action|Rest],Actions) ->
-  case mce_erl_actions:is_choice(Action) orelse mce_erl_actions:is_run(Action) of
+%%  case mce_erl_actions:is_choice(Action) orelse mce_erl_actions:is_run(Action) of
+  case mce_erl_actions:is_run(Action) of
     true ->
       collapse_actions(Rest,Actions);    
     false ->

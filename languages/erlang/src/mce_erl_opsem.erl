@@ -105,12 +105,15 @@ commit(Alternative, State, Conf) ->
 
 %% Combines transitions and commits
 transcommit(State,Conf) ->
-  lists:usort(transcommit_int(false,State,Conf)).
+  lists:usort(transcommit_int(State,Conf)).
   
 %% Self-sends??
 
 filter_nonprogressing(Transitions,State,Conf) ->
-  filter_nonprogressing(Transitions,[],State,length(Transitions)-1,Transitions,Conf).
+  case filter_nonprogressing(Transitions,[],State,length(Transitions)-1,Transitions,Conf) of
+    [] -> Transitions;
+    Other -> Other
+  end.
 
 filter_nonprogressing([],_,State,NumTransitions,Transitions,Conf) -> [];
 filter_nonprogressing([Transition|Rest],Seen,State,NumTransitions,Transitions,Conf) ->
@@ -227,96 +230,144 @@ occurs1(PidSet,[Transition|Rest],Transitions,State,Conf) ->
 	orelse occurs1(PidSet,Rest,Transitions,State,Conf)
   end.
 
-transcommit_int(Rpt,State,Conf) ->
+prioritize_choices(Transitions) ->
+  Transitions0 = 
+    lists:filter
+      (fun (Transition) ->
+	   case Transition of
+	     {exec,Exec} ->
+	       Process = Exec#executable.process,
+	       case Process#process.status of
+		 runnable ->
+		   case Process#process.expr of
+		     {?CONTEXTTAG,{_,[{?WASCHOICETAG,_}|_]}} ->
+		       true;
+		     _ ->
+		       false
+		   end;
+		 _ -> false
+	       end;
+	     _ -> false
+	   end
+       end, Transitions),
+  if
+    Transitions0==[] ->
+      Transitions;
+    true ->
+      Transitions0
+  end.
+
+timeout_separate(Transitions,Conf) ->
+  lists:foldl
+    (fun (Transition,{NonTimeouts,SlowTimeouts,UrgentTimeouts}) ->
+	 case Transition of
+	   {exec,Exec} ->
+	     P = Exec#executable.process,
+	     IsUrgentState = is_urgent(P#process.expr,Conf),
+	     case P#process.status of
+	       {timer,Deadline} ->
+		 if 
+		   IsUrgentState ->
+		     {NonTimeouts,SlowTimeouts,[Transition|UrgentTimeouts]};
+		   true ->
+		     {NonTimeouts,[Transition|SlowTimeouts],UrgentTimeouts}
+		 end;
+	       _ -> {[Transition|NonTimeouts],SlowTimeouts,UrgentTimeouts}
+	     end;
+	   _ -> {[Transition|NonTimeouts],SlowTimeouts,UrgentTimeouts}
+	 end
+     end, {[],[],[]}, Transitions).
+
+transcommit_int(State,Conf) ->
   {Actions,NewState} =
     collapse_locals([],State,Conf),
   PartRestrict =
     mce_conf:well_behaved(Conf) andalso mce_conf:partial_order(Conf),
   {_Type,Transitions0} =
     int_transitions(NewState,Conf),
-  Transitions =
-    case filter_nonprogressing(Transitions0,State,Conf) of
-      [] -> Transitions0;
-      Other -> Other
+  Transitions2 =
+    if PartRestrict ->
+	Transitions1 = prioritize_choices(Transitions0),
+	filter_nonprogressing(Transitions1,State,Conf);
+       true -> 
+	Transitions0
     end,
-  lists:flatmap
-    (fun (Alternative) ->
-	 {NewerActions,NewerState} =
-	   commit(Alternative,NewState,Conf),
-	 {NewerActions1,NewerState1} = 
-	   collapse_locals(Actions++NewerActions,NewerState,Conf),
-	 case NewerActions of
-	   [Action|_] ->
-	     Source = mce_erl_actions:get_source(Action),
-	     io:format
-	       ("Rpt=~p is_choice:~p is_timeout:~p~n",
-		[Rpt,
-		 mce_erl_actions:is_choice(Action),
-		 mce_erl_actions:is_timeout(Action)]),
-	     case {Rpt,
-		   mce_erl_actions:is_choice(Action),
-		   mce_erl_actions:is_timeout(Action)} of
-	       {false,true,false} ->
-		 Results1 =
-		   filter_nonlocals
-		     (transcommit_int(true,NewerState1,Conf),
-		      Source,NewerActions1,Conf),
-		 if
-		   Results1==[] ->
-		     [{NewerActions1,NewerState1}];
-		   true ->
-		     Results1
-		 end;
-	       {false,false,true} ->
-		 Results2 = transcommit_int(true,NewerState1,Conf),
-		 OtherTimeouts =
-		   mce_erl_actions:get_timeout(Action)=/={0,0,0}
-		   andalso
-		   lists:any 
-		     (fun ({Actions,_}) ->
-			  case Actions of
-			    [OtherAction|_] ->
-			      mce_erl_actions:get_source(OtherAction)=/=Source
-				andalso 
-				mce_erl_actions:is_timeout(OtherAction);
-			    _ ->
-			      false
-			  end
-		      end, Results2),
-		 if
-		   not(OtherTimeouts) ->
-		     Results3 =
-		       filter_nonlocals(Results2,Source,NewerActions1,Conf),
-		     if
-		       Results3==[] ->
-			 [{NewerActions1,NewerState1}];
-		       true ->
-			 Results3
-		     end;
-		   true -> [{NewerActions1,NewerState1}]
-		 end;
-	       _ -> [{NewerActions1,NewerState1}]
-	     end;
-	   _ -> [{NewerActions1,NewerState1}]
-	 end
-     end, 
-     Transitions).
-
-filter_nonlocals(Results,Source,Actions,Conf) ->
-  lists:foldl
-    (fun ({Actions2,State2},Acc) ->
-	 case Actions2 of
-	   [Action2|_] ->
-	     case mce_erl_actions:get_source(Action2) of
-	       Source ->
-		 [{Actions++Actions2,State2}|Acc];
-	       _ ->
-		 Acc
-	     end;
-	   _ -> Acc
-	 end
-     end, [], Results).
+  {NonTimeTransitions,SlowTimeTransitions,UrgentTimeTransitions} =
+    timeout_separate(Transitions2,Conf),
   
+  UrgentResults =
+    if
+      UrgentTimeTransitions=/=[] ->
+	{NewerActionsTmp,NewerStateTmp} =
+	  lists:foldl
+	    (fun (Transition,{_,NS}) -> commit(Transition,NS,Conf) end,
+	     {[],NewState}, UrgentTimeTransitions),
+	[collapse_locals(Actions++NewerActionsTmp,NewerStateTmp,Conf)];
+      true ->
+	[]
+    end,
+
+  OtherResults =
+   lists:map
+     (fun (Alternative) ->
+	  IsTimeout =
+	    isTimeoutTransition(Alternative),
+	  {NewerActions,NewerState} =
+ 	   commit(Alternative,NewState,Conf),
+ 	 {NewerActions1,NewerState1} = 
+ 	   collapse_locals(Actions++NewerActions,NewerState,Conf),
+	  if
+	    IsTimeout ->
+	      {_,Transitions3} = 
+		int_transitions(NewerState1,Conf),
+	      case filter_nonlocals_time(Transitions3,source(Alternative)) of
+		[] ->
+		  {NewerActions1,NewerState1};
+		[OneTransition] -> 
+		  {NewerActions2,NewerState2} =
+		    commit(OneTransition,NewerState1,Conf),
+		  collapse_locals(NewerActions1++NewerActions2,NewerState2,Conf)
+	      end;
+	    true -> {NewerActions1,NewerState1}
+	  end
+      end, 
+      SlowTimeTransitions++NonTimeTransitions),
+  %%
+  UrgentResults++OtherResults.
+
+filter_nonlocals_time(Transitions,Source) ->
+  lists:filter
+    (fun (Transition) ->
+	 isLocalTransition(Transition,Source) andalso
+	   not(isTimeoutTransition(Transition))
+     end, Transitions).
+
+source(Transition) ->
+  case Transition of
+    {exec,Exec} ->
+      P = Exec#executable.process,
+      Pid = P#process.pid
+  end.
+
+isLocalTransition(Transition,Pid) ->
+  case Transition of
+    {exec,Exec} ->
+      P = Exec#executable.process,
+      P#process.pid == Pid;
+    _ -> false
+  end.
+
+isTimeoutTransition(Transition) ->
+  case Transition of
+    {exec,Exec} ->
+      P = Exec#executable.process,
+      Pid = P#process.pid,
+      case P#process.status of
+	{timer,_} -> true;
+	_ -> false
+      end;
+    _ -> false
+  end.
 
 collapse_locals(Actions,State,Conf) ->
   PartRestrict =
@@ -516,7 +567,7 @@ timeRestrict(State, Possibilities, Conf) ->
 				    (TimerDeadline,TimerEntries)]}};
 			     true ->
 			       {Urgent,Slow,
-				{TimerDeadline,[Entry|TimerEntries]}};
+				{MostUrgent,[Entry|TimerEntries]}};
 			     false ->
 			       Acc
 			   end
@@ -1026,12 +1077,12 @@ doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
       _ -> SavedState
     end,
   %% Timer has expired we can just run the code
-  {TimeOutCall, Context} = getTimeOutCall(P#process.expr),
+  {TimeoutCall, Context} = getTimeoutCall(P#process.expr),
   mce_erl_state:setState(mce_erl_sysOS:setCurrentRunContext(Exec,NewState)),
   mce_erl_actions:record
     (mce_erl_actions:mk_run
-     (Pid,TimeOutCall)),
-  try mce_erl_stacks:execStack(TimeOutCall,Context) of
+     (Pid,TimeoutCall)),
+  try mce_erl_stacks:execStack(TimeoutCall,Context) of
       Value ->
       State = mce_erl_state:getState(),
       case mce_erl_stacks:isTagged(Value) of
@@ -1050,11 +1101,11 @@ doRunTimer(P, Deadline, Exec, SavedState, Conf) ->
       throw({user, Error, Reason})
   end.
 
-getTimeOutCall({?RECVTAG,{_,{_Timer,TimeOutCall}}}) ->
-  {TimeOutCall,[]};
-getTimeOutCall({?CONTEXTTAG,{Innermost,Context}}) ->
-  {?RECVTAG,{_,{_Timer,TimeOutCall}}} = Innermost,
-  {TimeOutCall,Context}.
+getTimeoutCall({?RECVTAG,{_,{_Timer,TimeoutCall}}}) ->
+  {TimeoutCall,[]};
+getTimeoutCall({?CONTEXTTAG,{Innermost,Context}}) ->
+  {?RECVTAG,{_,{_Timer,TimeoutCall}}} = Innermost,
+  {TimeoutCall,Context}.
 
 doExit(Pid, Expr, SavedState, Conf) ->
   Reason = mce_erl:exiting_reason(Expr),

@@ -326,7 +326,9 @@ transcommit_int(State,Conf) ->
 		[OneTransition] -> 
 		  {NewerActions2,NewerState2} =
 		    commit(OneTransition,NewerState1,Conf),
-		  collapse_locals(NewerActions1++NewerActions2,NewerState2,Conf)
+		  collapse_locals(NewerActions1++NewerActions2,NewerState2,Conf);
+		_ ->
+		  {NewerActions1,NewerState1}
 	      end;
 	    true -> {NewerActions1,NewerState1}
 	  end

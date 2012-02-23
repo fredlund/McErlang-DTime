@@ -102,5 +102,8 @@
  {{mcerlang,gget,1},[snd]},
  {{mcerlang,gput,2},[snd]},
  {{mcerlang,gerase,0},[snd]}, 
- {{mcerlang,gerase,1},[snd]}
+ {{mcerlang,gerase,1},[snd]},
+ {{mce_erl_time,now,0},[snd]},
+ {{mce_erl_time,nowRef,0},[snd]},
+ {{mce_erl_time,forget,0},[snd]}
 ].

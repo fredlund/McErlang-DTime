@@ -41,6 +41,7 @@
 -include("../../languages/erlang/src/include/state.hrl").
 -include("../../languages/erlang/src/include/node.hrl").
 -include("../../languages/erlang/src/include/process.hrl").
+-include("../../languages/erlang/src/include/emacros.hrl").
 
 %%-define(debug,true).
 -include("macros.hrl").
@@ -85,37 +86,62 @@ normalizeState(State) ->
       (fun ({ClockId,Time}) -> {ClockId,minusTimeStamps(Now,Time)} end,
        StateComp#state.clocks),
   ?LOG("Clocks was ~p and is ~p~n",[StateComp#state.clocks,NewClocks]),
-  State#monState
+  NewState =
+    State#monState
     {state=
-     StateComp#state
+       StateComp#state
      {time=NewNow,
       clocks=NewClocks,
       nodes=
-      lists:sort
-      (lists:map
-       (fun (Node) ->
-	    Node#node
-	      {processes=
-	       lists:sort
-	       (lists:map 
-		(fun (P) -> adjust_timers(P,Now)
-		 end, Node#node.processes))}
-	end,
-	StateComp#state.nodes))}}.
+	lists:sort
+	  (lists:map
+	     (fun (Node) ->
+		  Node#node
+		    {processes=
+		       lists:sort
+			 (lists:map 
+			    (fun (P) -> adjust_timers(P,Now)
+			     end, Node#node.processes))}
+	      end,
+	      StateComp#state.nodes))}},
+  NewState.
 
 adjust_timers(Process,void) ->
   Process;
 adjust_timers(Process,Now) ->
-  case Process#process.status of
-    {timer,Deadline} ->
-      NewDeadline =
-	case compareTimes_ge(Now,Deadline) of
-	  true -> {0,0,0};
-	  false -> minusTimeStamps(Deadline,Now)
-	end,
-      Process#process{status={timer,NewDeadline}};
+  P1 =
+    case Process#process.status of
+      {timer,Deadline} ->
+	NewDeadline =
+	  case compareTimes_ge(Now,Deadline) of
+	    true -> {0,0,0};
+	    false -> minusTimeStamps(Deadline,Now)
+	  end,
+	Process#process{status={timer,NewDeadline}};
+      _ ->
+	Process
+    end,
+  normalize_urgency(P1,Now).
+
+normalize_urgency(Process,Now) ->
+  case Process#process.expr of
+    {?CONTEXTTAG,{Expr,Context}} ->
+      Process#process{expr={?CONTEXTTAG,{Expr,normalize_context(Context,Now)}}};
     _ ->
       Process
+  end.
+  
+normalize_context(Context,Now) ->
+  case Context of
+    [{?URGENTTAG,MaxWait}|Rest] ->
+      case compareTimes_ge(Now,MaxWait) of
+	true -> [{?URGENTTAG,{0,0,0}}|Rest];
+	false -> [{?URGENTTAG,minusTimeStamps(MaxWait,Now)}|Rest]
+      end;
+    [Entry={?WASCHOICETAG,_}|RestContext] -> 
+      [Entry|normalize_context(RestContext,Now)];
+    _ ->
+      Context
   end.
 
 compareTimes_ge({M1, S1, Mic1}, {M2, S2, Mic2}) ->

@@ -178,8 +178,7 @@ simplify_pids(Other) ->
 
 lampsystem() ->		 
   Lamp = spawn(?MODULE,lamp,[]),
-  spawn(?MODULE,user,[Lamp]),
-  mce_erl:urgent(mce_erl:pause(fun () -> ok end)).
+  spawn(?MODULE,user,[Lamp]).
 
 user(Lamp) ->
   latest(1,2,5,fun () -> call(Lamp,press), user(Lamp) end).

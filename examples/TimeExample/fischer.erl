@@ -7,7 +7,7 @@
 start(N,Tick,D,T) ->
   mcerlang:nput(id,0),
   lists:foreach
-    (fun (Id) -> spawn(?MODULE,idle,[Id,Tick,D,T]) end,
+    (fun (Id) -> spawn(fun () -> idle(Id,Tick,D,T) end) end,
      lists:seq(1,N)).
 
 idle(Id,Tick,D,T) ->

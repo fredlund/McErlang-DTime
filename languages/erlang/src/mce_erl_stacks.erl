@@ -31,10 +31,10 @@
 
 -module(mce_erl_stacks).
 
--export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/1]).
+-export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/2]).
 -export([mkSynch/1]).
 -export([execStack/2,isTagged/1]).
--export([mkUrgent/1,mkSlow/1]).
+-export([mkUrgent/1,mkUrgent/2,mkSlow/1,mkSlow/2]).
 -include("emacros.hrl").
 
 mkSend(Label, Fun={M,F,A}) ->
@@ -63,10 +63,16 @@ mkTry(F, BodyCont, HandlerCont) ->
     end.
 
 mkUrgent(Cont) ->
-  mce_erl:urgent(Cont).
+  mce_erl:urgent(Cont,0).
+
+mkUrgent(Cont,MaxWait) when is_integer(MaxWait) ->
+  mce_erl:urgent(Cont,MaxWait).
 
 mkSlow(Cont) ->
-  mce_erl:slow(Cont).
+  mce_erl:urgent(Cont,infinite).
+
+mkSlow(Cont,MaxWait) when is_integer(MaxWait) ->
+  mce_erl:urgent(Cont,MaxWait).
 
 tryValue(Value, BodyCont, HandlerCont) ->
     case isTagged(Value) of
@@ -85,27 +91,31 @@ apply_value(Cont,Value) ->
       apply(Fun,[Value|Args])
   end.
 
-parseStack(Context) ->
-  parseStack(Context,[]).
-parseStack(Entry={?RECVTAG,_},RestStack) ->
+parseStack(Context,Time) ->
+  parseStack(Context,[],Time).
+parseStack(Entry={?RECVTAG,_},RestStack,Time) ->
   {Entry,lists:reverse(RestStack)};
-parseStack(Entry={?CHOICETAG,_},RestStack) ->
+parseStack(Entry={?CHOICETAG,_},RestStack,Time) ->
   {Entry,lists:reverse(RestStack)};
-parseStack(Entry={?SENDTAG,_},RestStack) ->
+parseStack(Entry={?SENDTAG,_},RestStack,Time) ->
   {Entry,lists:reverse(RestStack)};
-parseStack(Entry={?SYNCHTAG,_},RestStack) ->
+parseStack(Entry={?SYNCHTAG,_},RestStack,Time) ->
   {Entry,lists:reverse(RestStack)};
-parseStack({?LETTAG,{Expr,Cont}},RestStack) ->
-  parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack]);
-parseStack(Entry={?WASCHOICETAG,Expr},RestStack) ->
+parseStack({?LETTAG,{Expr,Cont}},RestStack,Time) ->
+  parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack],Time);
+parseStack(Entry={?WASCHOICETAG,Expr},RestStack,Time) ->
   {Entry,lists:reverse(RestStack)};
-parseStack({?URGENTTAG,Expr},RestStack) ->
-  parseStack(Expr,[{?URGENTTAG,void}|RestStack]);
-parseStack({?SLOWTAG,Expr},RestStack) ->
-  parseStack(Expr,[{?SLOWTAG,void}|RestStack]);
-parseStack({?TRYTAG,{Expr,Cont}},RestStack) ->
-  parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack]);
-parseStack(Arg1,Arg2) ->
+parseStack(Elem={?URGENTTAG,{MaxWait,Expr}},RestStack,Time) ->
+  case RestStack of
+    [{?URGENTTAG,_}|Rest] ->
+      parseStack(Elem,Rest,Time);
+    _ ->
+      MaxWaitTimer = addTimeStamps(milliSecondsToTimeStamp(MaxWait),Time),
+      parseStack(Expr,[{?URGENTTAG,MaxWaitTimer}|RestStack],Time)
+  end;
+parseStack({?TRYTAG,{Expr,Cont}},RestStack,Time) ->
+  parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack],Time);
+parseStack(Arg1,Arg2,_) ->
   io:format
     ("*** Error: malformed arguments to parseStack:~n  ~p; ~p~n",
      [Arg1,Arg2]),
@@ -136,8 +146,6 @@ execStack(Command,[{?WASCHOICETAG,_}|Rest]) ->
   execStack(Command,Rest);
 execStack(Command,[{?URGENTTAG,_}|Rest]) ->
   execStack(Command,Rest);
-execStack(Command,[{?SLOWTAG,_}|Rest]) ->
-  execStack(Command,Rest);
 execStack(Command,[{?SYNCHTAG,_}|Rest]) ->
   execStack(Command,Rest);
 execStack(Command,OtherTag) ->
@@ -156,7 +164,6 @@ isTagged({MaybeTag,_}) ->
     ?EXITINGTAG -> true;
     ?RECVTAG -> true;
     ?URGENTTAG -> true;
-    ?SLOWTAG -> true;
     ?SYNCHTAG -> true;
     _ -> false
   end;
@@ -228,6 +235,17 @@ evaluate_guard(GuardFun) ->
   end.
 
   
-	       
-	    
+milliSecondsToTimeStamp(MilliSeconds) ->
+  Seconds = MilliSeconds div 1000,
+  MegaSeconds = Seconds div 1000000,
+  {MegaSeconds, Seconds rem 1000000, MilliSeconds rem 1000 * 1000}.
 
+addTimeStamps({M1,S1,Mic1},{M2,S2,Mic2}) ->
+  Mic=Mic1+Mic2,
+  MicRem = Mic rem 1000000,
+  MicDiv = Mic div 1000000,
+  S = S1+S2+MicDiv,
+  SRem = S rem 1000000,
+  SDiv = S div 1000000,
+  M = M1+M2+SDiv,
+  {M,SRem,MicRem}.

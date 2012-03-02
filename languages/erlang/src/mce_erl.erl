@@ -58,7 +58,7 @@
 -export([void_state/1]).
 -export([compiled_with_mcerlang/1]).
 -export([mcerlang_compiled_caller/1]).
--export([urgent/2,slow/2]).
+-export([urgent/2]).
 
 -export([probe_state/1,probe_state/2,del_probe_state/1,get_probe_state/1]).
 -export([has_probe_state/2,get_probe_state/2]).

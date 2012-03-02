@@ -47,31 +47,31 @@
 %% the gen_server is started.
 start_link(Node,{local, Name}, Module, Args, _Options) -> 
   Pid =
-    spawn_link(Node, ?MODULE, doStart, [Name, Module, Args, mcerlang:self()]),
+    spawn_link(Node, ?MODULE, doStart, [Name, Module, Args, self()]),
   waitForStart(Pid).
 
 start_link({local, Name}, Module, Args, _Options) -> 
-  Pid = spawn_link(?MODULE, doStart, [Name, Module, Args, mcerlang:self()]),
+  Pid = spawn_link(?MODULE, doStart, [Name, Module, Args, self()]),
   waitForStart(Pid).
 
 start_link(Module, Args, _Options) ->
-  Pid = spawn_link(?MODULE, doStart, [Module, Args, mcerlang:self()]),
+  Pid = spawn_link(?MODULE, doStart, [Module, Args, self()]),
   waitForStart(Pid).
 
 %% New functionality: it is possible to specify a remote node where
 %% the gen_server is started.
 start(Node, {local, Name}, Module, Args, _Options) ->
   Pid =
-    spawn(Node, ?MODULE, doStart, [Name, Module, Args, mcerlang:self()]),
+    spawn(Node, ?MODULE, doStart, [Name, Module, Args, self()]),
   waitForStart(Pid).
 
 start({local, Name}, Module, Args, _Options) ->
   Pid =
-    spawn(?MODULE, doStart, [Name, Module, Args, mcerlang:self()]),
+    spawn(?MODULE, doStart, [Name, Module, Args, self()]),
   waitForStart(Pid).
 
 start(Module, Args, _Options) ->
-  Pid = spawn(?MODULE, doStart, [Module, Args, mcerlang:self()]),
+  Pid = spawn(?MODULE, doStart, [Module, Args, self()]),
   waitForStart(Pid).
 
 waitForStart(Pid) ->

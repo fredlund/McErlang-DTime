@@ -34,7 +34,7 @@
 -export([mkSend/2,mkLet/2,mkTry/3,tryValue/3,tryHandler/2,parseStack/1]).
 -export([mkSynch/1]).
 -export([execStack/2,isTagged/1]).
--export([mkUrgent/1,mkSlow/1]).
+-export([mkUrgent/1,mkUrgent/2,mkSlow/1,mkSlow/2]).
 -include("emacros.hrl").
 
 mkSend(Label, Fun={M,F,A}) ->
@@ -63,10 +63,16 @@ mkTry(F, BodyCont, HandlerCont) ->
     end.
 
 mkUrgent(Cont) ->
-  mce_erl:urgent(Cont).
+  mce_erl:urgent(Cont,0).
+
+mkUrgent(Cont,MaxWait) when is_integer(MaxWait) ->
+  mce_erl:urgent(Cont,MaxWait).
 
 mkSlow(Cont) ->
-  mce_erl:slow(Cont).
+  mce_erl:urgent(Cont,infinite).
+
+mkSlow(Cont,MaxWait) when is_integer(MaxWait) ->
+  mce_erl:urgent(Cont,MaxWait).
 
 tryValue(Value, BodyCont, HandlerCont) ->
     case isTagged(Value) of
@@ -99,10 +105,10 @@ parseStack({?LETTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?LETTAG,{void,Cont}}|RestStack]);
 parseStack(Entry={?WASCHOICETAG,Expr},RestStack) ->
   {Entry,lists:reverse(RestStack)};
-parseStack({?URGENTTAG,Expr},RestStack) ->
-  parseStack(Expr,[{?URGENTTAG,void}|RestStack]);
-parseStack({?SLOWTAG,Expr},RestStack) ->
-  parseStack(Expr,[{?SLOWTAG,void}|RestStack]);
+parseStack({?URGENTTAG,{MaxWait,Expr}},RestStack) ->
+  parseStack(Expr,[{?URGENTTAG,MaxWait}|RestStack]);
+parseStack({?SLOWTAG,{MaxWait,Expr}},RestStack) ->
+  parseStack(Expr,[{?SLOWTAG,MaxWait}|RestStack]);
 parseStack({?TRYTAG,{Expr,Cont}},RestStack) ->
   parseStack(Expr,[{?TRYTAG,{void,Cont}}|RestStack]);
 parseStack(Arg1,Arg2) ->

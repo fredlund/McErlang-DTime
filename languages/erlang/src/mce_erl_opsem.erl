@@ -257,13 +257,13 @@ prioritize_choices(Transitions) ->
       Transitions0
   end.
 
-timeout_separate(Transitions,Conf) ->
+timeout_separate(Now,Transitions,Conf) ->
   lists:foldl
     (fun (Transition,{NonTimeouts,SlowTimeouts,UrgentTimeouts}) ->
 	 case Transition of
 	   {exec,Exec} ->
 	     P = Exec#executable.process,
-	     IsUrgentState = is_urgent(P#process.expr,Conf),
+	     {IsUrgentState,MaxWait} = is_urgent(Now,P#process.expr,Conf),
 	     case P#process.status of
 	       {timer,Deadline} ->
 		 if 
@@ -293,7 +293,7 @@ transcommit_int(State,Conf) ->
 	Transitions0
     end,
   {NonTimeTransitions,SlowTimeTransitions,UrgentTimeTransitions} =
-    timeout_separate(Transitions2,Conf),
+    timeout_separate(State#state.time,Transitions2,Conf),
   
   UrgentResults =
     if
@@ -545,8 +545,10 @@ timeRestrict(State, Possibilities, Conf) ->
       (fun (Entry,Acc={Urgent,Slow,TimeEnt={MostUrgent,TimerEntries}}) ->
 	   case Entry of
 	     {exec, Exec} ->
-	       Process = Exec#executable.process,
-	       IsUrgentState = is_urgent(Process#process.expr,Conf),
+	       Process = 
+		 Exec#executable.process,
+	       {IsUrgentState,MaxWait} = 
+		 is_urgent(Now,Process#process.expr,Conf),
 	       case Process#process.status of
 		 {timer, TimerDeadline} ->
 		   if Now =:= infinity -> add_entry(Entry, IsUrgentState, Acc);
@@ -575,7 +577,7 @@ timeRestrict(State, Possibilities, Conf) ->
 			   end
 		       end
 		   end;
-		 _ -> add_entry(Entry, IsUrgentState, Acc)
+		 _ -> add_entry(Entry, IsUrgentState, MaxWait, Acc)
 	       end;
 	     Other -> {Urgent,[Entry|Slow],TimeEnt}
 	   end
@@ -628,41 +630,34 @@ remove_timed_transitions(Deadline,Entries) ->
 	 Result
      end, Entries).
 
-add_entry(Entry, true, {Urgent,Slow,Timers}) ->
+add_entry(Entry, true, MaxWait, {Urgent,Slow,Timers}) ->
   {[Entry|Urgent],Slow,{{0,0,0},[]}};
-add_entry(Entry, false, {Urgent,Slow,Timers}) ->
+add_entry(Entry, false, MaxWait, {Urgent,Slow,Timers}) ->
   {Urgent,[Entry|Slow],Timers}.
 
-is_urgent(Expr,Conf) ->
+is_urgent(Now,Expr,Conf) ->
   IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
-  {HasSlowTag,HasUrgentTag} =
+  UrgentInfo={HasUrgentTag,MaxWait} =
     case Expr of
       {?CONTEXTTAG,{_,Context}} ->
 	check_context_for_urgency_tag(Context);
       _ ->
-	{false,false}
+	{false,void}
     end,
   if 
-    HasSlowTag ->
-      false;
-    HasUrgentTag ->
-      true;
-    IsInfinitelyFast ->
-      true;
-    true ->
-      false
+    HasUrgentTag -> UrgentInfo;
+    IsInfinitelyFast -> {true,Time};
+    true -> false
   end.
 
 check_context_for_urgency_tag(Context) ->
   case Context of
-    [{?URGENTTAG,_}|_] ->
-      {false,true};
-    [{?SLOWTAG,_}|_] ->
-      {true,false};
+    [{?URGENTTAG,{MaxWait,_}}|_] ->
+      {true,MaxWait};
     [{?WASCHOICETAG,_}|RestContext] -> 
       check_context_for_urgency_tag(RestContext);
     _ ->
-      {false,false}
+      {false,void}
   end.
 
 allNodeMoves(F,[],_,State) -> [];
@@ -1238,17 +1233,39 @@ putProcess(P, Exec, State, Conf) ->
 	    {infinity, _} ->
 	      P#process{status=blocked, expr=Exec};
 	    {Time, _} ->
-	      Deadline =
+	      {Deadline,ExecNew} =
 		case {mce_conf:is_simulation(Conf),mce_conf:discrete_time(Conf)} of
 		  {_,true} ->
-		    addTimeStamps
-		      (milliSecondsToTimeStamp(Time),State#system.time);
+		    NewDeadline = 
+		      addTimeStamps
+			(milliSecondsToTimeStamp(Time),State#system.time),
+		    NewExec = 
+		      case Context of
+			[{'_urgent_',UTime}|RestCont] when is_integer(Time) ->
+			  {?CONTEXTTAG,
+			   {Innermost,
+			    [{'_urgent_',
+			      addTimeStamps
+				(milliSecondsToTimeStamp(Time),
+				 State#system.time)}|RestCont]}};
+			[{'_slow_',UTime}|RestCont] when is_integer(Time) ->
+			  {?CONTEXTTAG,
+			   {Innermost,
+			    [{'_slow_',
+			      addTimeStamps
+				(milliSecondsToTimeStamp(Time),
+				 State#system.time)}|RestCont]}};
+			_ ->
+			  Exec
+		      end,
+		    {NewDeadline,NewExec};
 		  {true,_} ->
-		    addTimeStamps(milliSecondsToTimeStamp(Time),erlang:now());
+		    {addTimeStamps(milliSecondsToTimeStamp(Time),erlang:now()),
+		     Exec};
 		  {false,_} -> 
-		    if Time=/=0 -> infinity; true -> 0 end
+		    {if Time=/=0 -> infinity; true -> 0 end, Exec}
 		end,
-	      P#process{status={timer,Deadline}, expr=Exec}
+	      P#process{status={timer,Deadline}, expr=ExecNew}
 	  end;
 	_ -> P#process{status=receivable, expr=Exec}
       end;

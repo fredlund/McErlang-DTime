@@ -734,17 +734,19 @@ transform_receive(C, Vars, CR) ->
       mk_receive_fun(C, Vars, CR);
     'let' ->
       case is_time_action_spec(C) of
-	{true,ActionType,Body} -> 
+	{true,ActionType,Args,Body} -> 
 	  {NewBody, NewForms} =
 	    transform_receive(cerl:let_body(C), Vars, CR),
 	  ActionCall =
 	    case ActionType of
 	      urgent -> 
 		cerl:c_call
-		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkUrgent),[NewBody]);
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkUrgent),
+		   [NewBody|Args]);
 	      slow ->
 		cerl:c_call
-		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkSlow),[NewBody])
+		  (cerl:c_atom(mce_erl_stacks),cerl:c_atom(mkSlow),
+		   [NewBody|Args])
 	    end,
 	  {ActionCall,NewForms};
 	false ->
@@ -891,13 +893,15 @@ is_time_action_spec(C) ->
       case
 	cerl:is_c_atom(Module)
 	andalso cerl:is_c_atom(Name)
-	andalso Arity==0
+	andalso Arity<2
 	andalso cerl:atom_val(Module)=='mce_erl'
 	andalso (cerl:atom_val(Name)=='urgent'
 		 orelse cerl:atom_val(Name)=='slow')
       of
-	true -> {true,cerl:atom_val(Name),cerl:let_body(C)};
-	false -> false
+	true ->
+	  {true,cerl:atom_val(Name),cerl:call_args(Arg),cerl:let_body(C)};
+	false ->
+	  false
       end;
     _ -> false
   end.

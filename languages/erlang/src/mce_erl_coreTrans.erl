@@ -424,14 +424,16 @@ genVar() ->
   end.
 
 genAtom() ->
-  case get(genAtom) of
-    {num,N} ->
-      put(genAtom,{num,N+1}),
-      cerl:c_atom("atom__"++integer_to_list(N));
-    _ ->
-      put(genAtom,{num,1}),
-      cerl:c_atom(list_to_atom("atom__"++integer_to_list(0)))
-  end.
+  genAtom("atom").
+
+genAtom(Atom) ->
+  Counter = 
+    case get(genAtom) of
+      {num,N} -> N;
+      _ -> 0
+    end,
+  put(genAtom,{num,Counter+1}),
+  cerl:c_atom(Atom++"__"++integer_to_list(Counter)).
 
 genVars(N) ->
     mce_utils:repeat(fun (Vars, I) when is_integer(I), I >= 0 ->
@@ -606,7 +608,13 @@ changeReceive(Code, CompileRec) ->
     lists:foldl
       (fun ({FunName, Fun}, {Forms, Exports}) ->
 	   ?LOG("Translating function ~s~n", [pp(FunName)]),
-	   {NewExpr, NewForms} = transform_receive(Fun, CR),
+	   A = 
+	     case cerl:var_name(FunName) of
+	       Atom when is_atom(Atom) -> Atom;
+	       {Atom,_} when is_atom(Atom) -> Atom
+	     end,
+	   NF = atom_to_list(A),
+	   {NewExpr, NewForms} = transform_receive(NF, Fun, CR),
 	   NewMappedForms =
 	     lists:map(fun ({Name,LineNo,Form}) ->
 			   {Name,FunName,LineNo,Form} end, NewForms),
@@ -654,10 +662,10 @@ mk_funmap(Defs) ->
 	 cerl:c_tuple([DefaultVar,cerl:c_atom(void)]))],
        Defs))).
 
-transform_receive(C,CR) ->
-  transform_receive(C,[],CR).
+transform_receive(NF, C,CR) ->
+  transform_receive(NF,C,[],CR).
 
-transform_receive(C, Vars, CR) ->
+transform_receive(NF, C, Vars, CR) ->
   case cerl:type(C) of
     'call' ->
       Module = cerl:call_module(C),
@@ -714,11 +722,11 @@ transform_receive(C, Vars, CR) ->
       NewVars =
 	cerl:fun_vars(C),
       {NewBody, NewForms} =
-	transform_receive(cerl:fun_body(C), add_vars(NewVars, Vars), CR),
+	transform_receive(NF, cerl:fun_body(C), add_vars(NewVars, Vars), CR),
       {cerl:c_fun(NewVars, NewBody), NewForms};
     'case' ->
       {NewClauses, NewForms} =
-	transform_clauses(cerl:case_clauses(C), Vars, CR),
+	transform_clauses(NF, cerl:case_clauses(C), Vars, CR),
       {cerl:c_case(cerl:case_arg(C), NewClauses),
        NewForms};
     letrec ->
@@ -726,17 +734,17 @@ transform_receive(C, Vars, CR) ->
 	add_vars(cerl:letrec_vars(C), Vars),
       ?LOG("New LetRecVars=~p~n", [NewVars]),
       {NewDefs, NewForms} =
-	transform_definitions(cerl:letrec_defs(C), NewVars, CR),
+	transform_definitions(NF, cerl:letrec_defs(C), NewVars, CR),
       {NewBody, NewerForms} =
-	transform_receive(cerl:letrec_body(C), NewVars, CR),
+	transform_receive(NF, cerl:letrec_body(C), NewVars, CR),
       {cerl:c_letrec(NewDefs, NewBody), NewForms ++ NewerForms};
     'receive' ->
-      mk_receive_fun(C, Vars, CR);
+      mk_receive_fun(NF, C, Vars, CR);
     'let' ->
       case is_time_action_spec(C) of
 	{true,ActionType,Args,Body} -> 
 	  {NewBody, NewForms} =
-	    transform_receive(cerl:let_body(C), Vars, CR),
+	    transform_receive(NF, cerl:let_body(C), Vars, CR),
 	  ActionCall =
 	    case ActionType of
 	      urgent -> 
@@ -753,7 +761,7 @@ transform_receive(C, Vars, CR) ->
 	  ?LOG("In let: vars=~p c=~s~n", [Vars, pp(C)]),
 	  {NewBody, BodyForms} =
 	    transform_receive
-	      (cerl:let_body(C), add_vars(cerl:let_vars(C), Vars), CR),
+	      (NF, cerl:let_body(C), add_vars(cerl:let_vars(C), Vars), CR),
 	  ?LOG("NewBody=~s~n", [pp(NewBody)]),
 	  case
 	    mce_erl_sef_analysis:has_sef
@@ -772,16 +780,16 @@ transform_receive(C, Vars, CR) ->
 		    transform_values_to_tuple(cerl:let_arg(C))
 		end,
 	      {NewArg, ArgForms} =
-		transform_receive(TransformArg, Vars, CR),
+		transform_receive(NF, TransformArg, Vars, CR),
 	      ?LOG("NewArg=~s~n", [pp(NewArg)]),
 	      {LetExpr, NewLetFuns} =
-		mk_let_expr(C, NewBody, NewArg, Vars, cerl:let_vars(C), CR),
+		mk_let_expr(NF, C, NewBody, NewArg, Vars, cerl:let_vars(C), CR),
 	      ?LOG("LetExpr=~s~n", [pp(LetExpr)]),
 	      {LetExpr, NewLetFuns ++ ArgForms ++ BodyForms};
 	    false ->
 	      ?LOG("No sef...~n", []),
 	      {NewArg, ArgForms} =
-		transform_receive(cerl:let_arg(C), Vars, CR),
+		transform_receive(NF, cerl:let_arg(C), Vars, CR),
 	      ?LOG("NewArg=~s~n", [pp(NewArg)]),
 	      {copy_ann(C,cerl:c_let(cerl:let_vars(C), NewArg, NewBody)),
 	       ArgForms ++ BodyForms}
@@ -801,17 +809,17 @@ transform_receive(C, Vars, CR) ->
 	    transform_values_to_tuple(cerl:try_arg(C))
 	end,
       {NewArg, ArgForms} =
-	transform_receive(TransformArg, Vars, CR),
+	transform_receive(NF, TransformArg, Vars, CR),
       NewBodyVars =
 	cerl:try_vars(C),
       {NewBody, BodyForms} =
-	transform_receive(cerl:try_body(C), add_vars(NewBodyVars,Vars), CR),
+	transform_receive(NF, cerl:try_body(C), add_vars(NewBodyVars,Vars), CR),
       NewHandlerVars =
 	cerl:try_evars(C),
       {NewHandler, HandlerForms} =
-	transform_receive(cerl:try_handler(C),add_vars(NewHandlerVars,Vars),CR),
+	transform_receive(NF, cerl:try_handler(C),add_vars(NewHandlerVars,Vars),CR),
       BodyFunName =
-	genAtom(),
+	genAtom(NF),
       BodyArg =
 	genVar(),
       NeededBodyVars =
@@ -828,7 +836,7 @@ transform_receive(C, Vars, CR) ->
 				     end],
 				    NewBody)]))},
       HandlerFunName =
-	genAtom(),
+	genAtom(NF),
       HandlerArg =
 	genVar(),
       NeededHandlerVars =
@@ -906,26 +914,22 @@ is_time_action_spec(C) ->
     _ -> false
   end.
 
-	  
-	
-
-
-transform_definitions(Definitions,Vars,CR) ->
+transform_definitions(NF, Definitions,Vars,CR) ->
   lists:foldl
     (fun ({Var,Def},{NewDefs,NewForms}) ->
-	 {NewDef,NewerForms} = transform_receive(Def,Vars,CR),
+	 {NewDef,NewerForms} = transform_receive(NF,Def,Vars,CR),
 	 {[{Var,NewDef}|NewDefs],NewerForms++NewForms}
      end,
      {[],[]},
      Definitions).
 
-transform_clauses(Clauses,Vars,CR) ->
+transform_clauses(NF,Clauses,Vars,CR) ->
   lists:foldr
     (fun (Clause,{NewClauses,NewForms}) ->
 	 NewVars = add_vars(cerl:clause_vars(Clause),Vars),
 	 ?LOG("Clause body: ~s~n",[pp(cerl:clause_body(Clause))]),
 	 {NewBody,NewerForms} =
-	   transform_receive(cerl:clause_body(Clause),NewVars,CR),
+	   transform_receive(NF,cerl:clause_body(Clause),NewVars,CR),
 	 {[cerl:c_clause(cerl:clause_pats(Clause),
 			 cerl:clause_guard(Clause),
 			 NewBody)|
@@ -933,13 +937,13 @@ transform_clauses(Clauses,Vars,CR) ->
 	  NewerForms++NewForms}
      end, {[],[]}, Clauses).
 
-mk_receive_fun(Receive, Vars, CR) ->
+mk_receive_fun(NF, Receive, Vars, CR) ->
   ?LOG("mk_receive_fun(~s)~n", [pp(Receive)]),
   Clauses = cerl:receive_clauses(Receive),
   Timeout = cerl:receive_timeout(Receive),
   Action = cerl:receive_action(Receive),
   {NewClauses, ClausesForms} =
-    transform_clauses(Clauses, Vars, CR),
+    transform_clauses(NF, Clauses, Vars, CR),
   ?LOG("OldClauses=~p~nNewClauses=~p~n", [Clauses, NewClauses]),
   {NewAction, ActionForms} =
     case is_infinity_timer(Timeout) of
@@ -948,9 +952,9 @@ mk_receive_fun(Receive, Vars, CR) ->
       false ->
 	ActionNeededVars =
 	  ordsets:intersection(Vars, cerl_trees:free_variables(Action)),
-	NewActionFunName = genAtom(),
+	NewActionFunName = genAtom(NF),
 	{NewAction0, ActionForms0} =
-	  transform_receive(Action, Vars, CR),
+	  transform_receive(NF, Action, Vars, CR),
 	{cerl:c_tuple([cerl:c_atom(CR#cRrec.moduleName), NewActionFunName,
 		       c_list(to_vars(ordsets:to_list(ActionNeededVars)))]),
 	 [{cerl:c_fname(cerl:atom_val(NewActionFunName), 
@@ -960,7 +964,7 @@ mk_receive_fun(Receive, Vars, CR) ->
 	  | ActionForms0]}
     end,
   Variables = cerl_trees:free_variables(Receive),
-  NewFunName = genAtom(),
+  NewFunName = genAtom(NF),
   ?LOG("Vars is ~p, ReceiveVars is ~p, Intersection=~p~n",
        [Vars, cerl_trees:free_variables(Receive),
 	ordsets:intersection(Vars, cerl_trees:variables(Receive))]),
@@ -1013,9 +1017,9 @@ is_infinity_timer(Timer) ->
     false -> false
   end.
 
-mk_let_expr(C,LetBody,LetArg,Vars,LetVars,CR) ->
+mk_let_expr(NF,C,LetBody,LetArg,Vars,LetVars,CR) ->
   NewFunName =
-    genAtom(),
+    genAtom(NF),
   ?LOG
     ("mk_let_expr: defining body function ~p~nbody=~s~narg=~s~nVars=~p~nLetVars=~p~n",
      [cerl:atom_val(NewFunName),pp(LetBody),pp(LetArg),Vars,LetVars]),

@@ -76,7 +76,8 @@ start(Module, Args, _Options) ->
 
 waitForStart(Pid) ->
   receive
-    {ok,started} -> {ok, Pid}
+    {ok,started} -> {ok, Pid};
+    Other -> Other
   end.
 
 doStart(Name, Module, Args, ParentPid) ->
@@ -102,7 +103,7 @@ doStart(Name, Module, Args, ParentPid) ->
 	{ok, _} -> loop(State, Module, Timeout);
 	_ -> exiting
       end
-  catch _:Reason -> {error,Reason} end.
+  catch _:Reason -> ParentPid!{error,Reason} end.
 
 doStart(Module, Args, ParentPid) ->
   try

@@ -31,7 +31,8 @@
 
 -module(mce_erl_sef_analysis).
 
--export([analyze/2,has_sef/3,call_has_snd_for_sure/2]).
+-export([analyze/2,has_sef/3]).
+-export([call_has_snd_for_sure/2,call_has_local_for_sure/2]).
 -export([module_calls/1,module_calls_modules/1]).
 
 %%-define(debug,true).
@@ -257,7 +258,12 @@ check_for_direct_sef({ok,I},CR) ->
       {ok,Bsnd} -> Bsnd and CR#compile_rec.sends_are_sefs;
       error -> false
     end,
-  Has_rcv_sef or Has_snd_sef.
+  Has_local_sef =
+    case orddict:find(local,Options) of
+      {ok,Blocal} -> Blocal and CR#compile_rec.sends_are_sefs;
+      error -> false
+    end,
+  Has_rcv_sef or Has_snd_sef or Has_local_sef.
 
 check_for_snd(error,_CR) -> false;
 check_for_snd({ok,I},CR) ->
@@ -268,6 +274,16 @@ check_for_snd({ok,I},CR) ->
       error -> false
     end,
   Has_snd_sef.
+
+check_for_local(error,_CR) -> false;
+check_for_local({ok,I},CR) ->
+  Options = I#info_rec.options,
+  Has_local_sef =
+    case orddict:find(local,Options) of
+      {ok,Bsnd} -> Bsnd and CR#compile_rec.sends_are_sefs;
+      error -> false
+    end,
+  Has_local_sef.
 
 unknown_sef_resolve(CR) when is_record(CR,compile_rec) ->
   if CR#compile_rec.unknown_is_rcv ->
@@ -368,6 +384,12 @@ call_has_sef(Call = {Module, Function, Arity}, CR) ->
 
 call_has_snd_for_sure(Call = {Module, Function, Arity}, CR) ->
   check_for_snd
+    (mce_erl_compile_info:get_function
+     (Module, Function, Arity, CR#compile_rec.compile_info),
+     CR).
+
+call_has_local_for_sure(Call = {Module, Function, Arity}, CR) ->
+  check_for_local
     (mce_erl_compile_info:get_function
      (Module, Function, Arity, CR#compile_rec.compile_info),
      CR).

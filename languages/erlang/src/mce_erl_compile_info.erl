@@ -216,15 +216,15 @@ check_options(ObjectType,Arity,Options) ->
 	     {rcv,true};
 	   snd ->
 	     {snd,true};
-	   stateful ->
-	     {state,true};
+	   local ->
+	     {local,true};
 	   {blacklisted,B} when is_boolean(B) ->
 	     Option;
 	   {mc_blacklisted,B} when is_boolean(B) ->
 	     Option;
 	   {snd,B} when is_boolean(B) ->
 	     Option;
-	   {stateful,B} when is_boolean(B) ->
+	   {local,B} when is_boolean(B) ->
 	     Option;
 	   {rcv,B} when is_boolean(B) ->
 	     Option;
@@ -240,6 +240,9 @@ check_options(ObjectType,Arity,Options) ->
 		ObjectType==function ->
 	     {translated_to,{ModuleName,FunctionName,Arity}};
 	   _ ->
+	     io:format
+	       ("*** Error: unknown option ~p in configuration file~n",
+		[Option]),
 	     throw(options)
 	 end
      end, Options).

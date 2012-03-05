@@ -678,9 +678,28 @@ transform_receive(NF, C, Vars, CR) ->
 	  case mce_erl_sef_analysis:call_has_snd_for_sure
 	    ({cerl:atom_val(Module),cerl:atom_val(Name),cerl:call_arity(C)},
 	     CR#cRrec.compileRec) of
-	    false -> {C, []};
+	    false -> 
+	      case mce_erl_sef_analysis:call_has_local_for_sure
+		({cerl:atom_val(Module),cerl:atom_val(Name),cerl:call_arity(C)},
+		 CR#cRrec.compileRec) of
+		false -> {C,[]};
+		true ->
+		  LocalExpr =
+		    copy_ann
+		      (C,
+		       cerl:c_call
+			 (cerl:c_atom(mce_erl_stacks),
+			  cerl:c_atom(mkLocal),
+			  [cerl:c_tuple
+			     ([Module,
+			       Name,
+			       cerl:c_int(cerl:call_arity(C))]),
+			   cerl:c_tuple
+			     ([Module,Name,c_list(cerl:call_args(C))])])),
+		  {LocalExpr,[]}
+	      end;
 	    true -> 
-	      PauseExpr =
+	      SendExpr =
 		copy_ann
 		  (C,
 		   cerl:c_call
@@ -692,7 +711,7 @@ transform_receive(NF, C, Vars, CR) ->
 		       cerl:c_int(cerl:call_arity(C))]),
 		     cerl:c_tuple
 		     ([Module,Name,c_list(cerl:call_args(C))])])),
-	       {PauseExpr,[]}
+	       {SendExpr,[]}
 	  end;
 	_ ->
 	  %% Doing an indirect call

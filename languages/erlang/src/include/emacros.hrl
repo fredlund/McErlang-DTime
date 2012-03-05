@@ -15,3 +15,6 @@
 -define(URGENTTAG,'_urgent_').
 -define(SYNCHTAG,'_synch_').
 
+-define(MCE_ERL_RUNTIME_COMPILE_DATA,mce_erl_runtime_compile_data).
+-define(MCE_ERL_RUNTIME_FUNC_MAP_TABLE,mce_erl_runtime_func_table).
+-define(MCE_ERL_RUNTIME_MOD_MAP_TABLE,mce_erl_runtime_mod_table).

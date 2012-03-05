@@ -81,7 +81,8 @@ waitForStart(Pid) ->
   end.
 
 doStart(Name, Module, Args, ParentPid) ->
-  try 
+  %%try 
+  case
     case apply(Module, init, [Args]) of
       {ok, AState} ->
 	{AState,infinity};
@@ -103,7 +104,8 @@ doStart(Name, Module, Args, ParentPid) ->
 	{ok, _} -> loop(State, Module, Timeout);
 	_ -> exiting
       end
-  catch _:Reason -> ParentPid!{error,Reason} end.
+  end.
+  %%catch _:Reason -> ParentPid!{error,Reason} end.
 
 doStart(Module, Args, ParentPid) ->
   try

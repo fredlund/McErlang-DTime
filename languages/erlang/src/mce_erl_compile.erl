@@ -399,7 +399,11 @@ compile(CR) when is_record(CR, compile_rec) ->
     mce_erl_sef_analysis:analyze(AllTranslatedCores, CR),
   ?LOG("Translating receives...~n", []),
   mce_erl_coreTrans:compile
-    (AllTranslatedCores, CR#compile_rec{sef_analysis=SefAnalysis}).
+    (AllTranslatedCores, CR#compile_rec{sef_analysis=SefAnalysis}),
+  OutputDir = CR#compile_rec.output_dir,
+  GenFile = OutputDir++"/"++atom_to_list(?MCE_ERL_RUNTIME_COMPILE_DATA),
+  gen_compile_info_file(GenFile++".erl",CR),
+  {ok,_} = compile:file(GenFile,[{outdir,OutputDir}]).
 
 is_core_file(FileSpec) ->
   has_suffix(FileSpec,".core").
@@ -645,3 +649,70 @@ find_stdincludes() ->
       [{i,filename:join([Dir,"src","include"])},
        {i,filename:join([Dir,"languages","erlang","src","include"])}]
   end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Generate information about remappings of functions, etc, 
+%% which is available at runtime (necessary to evaluate function calls
+%% which are not totally determined at compile time)
+
+gen_compile_info_file(File,CR) ->
+  case file:open(File, [write]) of
+    {ok, FD} ->
+      gen_compile_info(FD,CR),
+      ok = file:close(FD);
+    _ ->
+      io:format("*** Error: failure opening file ~p for writing~n",[File]),
+      throw(bad)
+  end.
+
+gen_compile_info(FD,CR) ->
+  Gen_func_map =
+    atom_to_list(?MCE_ERL_RUNTIME_FUNC_MAP_TABLE),
+  Gen_mod_map =
+    atom_to_list(?MCE_ERL_RUNTIME_MOD_MAP_TABLE),
+  io:format
+    (FD, 
+     "-module("++atom_to_list(?MCE_ERL_RUNTIME_COMPILE_DATA)++").\n"++
+       "-export(["++Gen_func_map++"/0]).\n"++
+       "-export(["++Gen_mod_map++"/0]).\n"++
+       "\n\n",
+     []),
+  gen_func_map(Gen_func_map,FD,CR),
+  io:format(FD,"\n",[]),
+  gen_mod_map(Gen_mod_map,FD,CR),
+  io:format(FD,"\n",[]).
+
+gen_func_map(Name,FD,CR) ->
+  io:format(FD,Name++"() ->\n",[]),
+  lists:foreach
+    (fun (MapEntry) -> 
+	 io:format
+	   (FD,
+	    "  ets:insert\n  ("++
+	      atom_to_list(?MCE_ERL_RUNTIME_FUNC_MAP_TABLE)++",\n   ~p),~n",
+	    [MapEntry])
+     end,
+     mce_erl_compile_info:all_function_remappings(CR#compile_rec.compile_info)),
+  io:format(FD,"  ok.\n",[]).
+
+gen_mod_map(Name,FD,CR) ->
+  io:format(FD,Name++"() ->\n",[]),
+  lists:foreach
+    (fun (MapEntry) -> 
+	 io:format
+	   (FD,
+	    "  ets:insert\n  ("++
+	      atom_to_list(?MCE_ERL_RUNTIME_MOD_MAP_TABLE)++",\n   ~p),~n",
+	    [MapEntry])
+     end,
+     mce_erl_compile_info:all_module_remappings(CR#compile_rec.compile_info)),
+  io:format(FD,"  ok.\n",[]).
+
+add_predefined_maps() ->
+  lists:map
+    (fun ({Fun,Arity}) ->
+	 {{mcerlang,Fun,Arity},{mcerlang,Fun}}
+     end,
+     mcerlang:module_info(exports)).
+     

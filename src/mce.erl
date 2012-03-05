@@ -37,11 +37,12 @@
 -export([all_mcerlang_modules/1]).
 -export([mcerlang_version/0]).
 -export([result/0]).
--export([find_mce_opts/0, find_funinfo/0]).
+-export([find_mce_opts/0, find_funinfo/0, init_mappings/0]).
 
 -include("monState.hrl").
 -include("mce_opts.hrl").
 -include("table.hrl").
+-include("../languages/erlang/src/include/emacros.hrl").
 
 %%-define(debug,true).
 
@@ -148,6 +149,44 @@ start(UserConf) ->
       ref=Ref,
       conf=UConf,
       ask_deadline=now_plus_seconds(5)}).
+
+%% Initialize functions mappings
+init_mappings() ->
+  create_table(?MCE_ERL_RUNTIME_FUNC_MAP_TABLE),
+  create_table(?MCE_ERL_RUNTIME_MOD_MAP_TABLE),
+  ?MCE_ERL_RUNTIME_COMPILE_DATA:?MCE_ERL_RUNTIME_FUNC_MAP_TABLE(),
+  ?MCE_ERL_RUNTIME_COMPILE_DATA:?MCE_ERL_RUNTIME_MOD_MAP_TABLE().
+
+create_table(TableName) ->
+  case ets:info(TableName,owner) of
+    undefined ->
+      loop_until_fresh(TableName);
+    Pid ->
+      erlang:exit(Pid,kill),
+      loop_until_fresh(TableName)
+  end.
+
+loop_until_fresh(TableName) ->
+  case ets:info(TableName) of
+    undefined ->
+      spawn(fun () -> ets:new(TableName,[named_table,public]), loop() end),
+      loop_until_created(TableName);
+    _ ->
+      timer:sleep(10),
+      loop_until_fresh(TableName)
+  end.
+
+loop_until_created(TableName) ->
+  case ets:info(TableName) of
+    undefined ->
+      timer:sleep(10),
+      loop_until_created(TableName);
+    _ ->
+      ok
+  end.
+
+loop() ->
+  receive X -> loop() end.
 
 monitor_mce(MonInfo) ->
   MonRef = MonInfo#mceMonitor.ref,
@@ -330,6 +369,7 @@ start_running(MonitorPid,UserConf) ->
   mce_conf:prepare_run(Conf),
   mce_conf:format
     (normal,"Conf to run with is~n~s~n~n", [mce_erl_pretty:pretty(Conf)]),
+  init_mappings(),
   BaseMeasurements =
     return_measurements(),
   MonitorPid!{conf,Conf},

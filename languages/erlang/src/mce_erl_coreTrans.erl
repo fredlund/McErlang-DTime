@@ -44,6 +44,8 @@
 %%
 %%-export([translate/2]).
 
+-define(MCERL_INT_PREFIX, "mce_erl_").
+
 %%-define(debug,true).
 -include("../../../src/include/macros.hrl").
 -include("emacros.hrl").
@@ -590,6 +592,7 @@ safe_calls(Code, CompileInfo) ->
 	 end
      end, Code).
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Transformation that replaces receive expressions with recv,
@@ -677,31 +680,6 @@ transform_receive(NF, C, Vars, CR) ->
 	     CR#cRrec.compileRec) of
 	    false -> {C, []};
 	    true -> 
-%%	      PauseFunName =
-%%		genAtom(),
-%%	      NeededPauseVars =
-%%		ordsets:intersection(Vars, cerl_trees:free_variables(C)),
-%%	      PauseFun =
-%%		{cerl:c_fname
-%%		 (cerl:atom_val(PauseFunName),
-%%		  length(NeededPauseVars)),
-%%		 try_to_find_lineno([C,Module,Name]),
-%%		 cerl:c_fun(to_vars(ordsets:to_list(NeededPauseVars)),C)},
-%%	      PauseExpr =
-%%		copy_ann
-%%		  (C,
-%%		   cerl:c_call
-%%		   (cerl:c_atom(mce_erl_stacks),
-%%		    cerl:c_atom(mkSend),
-%%		    [cerl:c_tuple
-%%		     ([Module,
-%%		       Name,
-%%		       cerl:c_int(cerl:call_arity(C))]),
-%%		     cerl:c_tuple
-%%		     ([cerl:c_atom(CR#cRrec.moduleName),
-%%		       PauseFunName,
-%%		       c_list(to_vars(ordsets:to_list(NeededPauseVars)))])])),
-%%	       {PauseExpr,[PauseFun]}
 	      PauseExpr =
 		copy_ann
 		  (C,
@@ -716,7 +694,17 @@ transform_receive(NF, C, Vars, CR) ->
 		     ([Module,Name,c_list(cerl:call_args(C))])])),
 	       {PauseExpr,[]}
 	  end;
-	_ -> {C,[]}
+	_ ->
+	  %% Doing an indirect call
+	  IndirectCall =
+	    copy_ann
+	      (C,
+	       cerl:c_call
+		 (cerl:c_atom(mce_erl),
+		  cerl:c_atom(safe_call),
+		  [Module,Name,c_list(cerl:call_args(C)),
+		   cerl:c_int(length(cerl:call_args(C)))])),
+	  {IndirectCall,[]}
       end;
     'fun' ->
       NewVars =

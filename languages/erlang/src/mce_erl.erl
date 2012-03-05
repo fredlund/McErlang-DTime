@@ -380,18 +380,25 @@ is_context(_) -> false.
 match_context_inner(E) -> match(E, fun is_context/1, fun context_inner/1).
 match_context(E) -> match(E, fun is_context/1, fun context/1).
     
-%% safe_call(Module,Name,Args,Arity) ->  
-%%   {NewModule,NewName} = mce_erl_compile_info:map_fun_arity(Module,Name,Arity),
-%%   erlang:apply(NewModule,NewName,Args).
-
 safe_call(Module,Name,Args,Arity) ->
-   try mce_erl_compile_info:map_fun_arity(Module,Name,Arity) of
-           {NewModule,NewName} ->
-                   erlang:apply(NewModule,NewName,Args)
-   catch _:_ ->
-                   erlang:apply(Module,Name,Args)
-   end.
-  
+  case ets:lookup(?MCE_ERL_RUNTIME_FUNC_MAP_TABLE,{Module,Name,Arity}) of
+    [{_,{{M,F,Arity},Snd,Rcv,Locals}}] ->
+      if
+	Snd -> mce_erl_stacks:mkSend(void,{M,F,Args});
+	true -> erlang:apply(M,F,Args)
+      end;
+    [] ->
+      case ets:lookup(?MCE_ERL_RUNTIME_MOD_MAP_TABLE,Module) of
+	[{_,{M,Snd,Rcv,Locals}}] ->
+	  if
+	    Snd -> mce_erl_stacks:mkSend(void,{M,Name,Args});
+	    true -> erlang:apply(M,Name,Args)
+	  end;
+	[] ->
+	  erlang:apply(Module,Name,Args)
+      end
+  end.
+
 %% @private
 void_state(State) ->
   case State#state.nodes of

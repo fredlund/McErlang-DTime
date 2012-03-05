@@ -216,11 +216,15 @@ check_options(ObjectType,Arity,Options) ->
 	     {rcv,true};
 	   snd ->
 	     {snd,true};
+	   stateful ->
+	     {state,true};
 	   {blacklisted,B} when is_boolean(B) ->
 	     Option;
 	   {mc_blacklisted,B} when is_boolean(B) ->
 	     Option;
 	   {snd,B} when is_boolean(B) ->
+	     Option;
+	   {stateful,B} when is_boolean(B) ->
 	     Option;
 	   {rcv,B} when is_boolean(B) ->
 	     Option;
@@ -316,12 +320,19 @@ all_module_remappings(Conf) ->
 	   if
 	     %% Module definition
 	     is_atom(Key) ->
-	       case lists:keysearch(translated_to,1,Value#info_rec.options) of
-		 {value,_} ->
-		   case remap_module(Key,Conf) of
-		     Conf -> Acc;
-		     NewName -> [{Key,NewName}|Acc]
-		   end;
+	       case get_module(Key,Conf) of
+		 {ok,ModInfo} ->
+		   Options = ModInfo#info_rec.options,
+		   TranslatedTo =
+		     proplists:get_value
+		       (translated_to,Options,Key),
+		   Snd =
+		     proplists:get_value(snd,Options,false),
+		   Rcv =
+		     proplists:get_value(rcv,Options,false),
+		   Locals =
+		     proplists:get_value(locals,Options,false),
+		   [{Key,{TranslatedTo,Snd,Rcv,Locals}}|Acc];
 		 _ -> Acc
 	       end;
 	     true -> Acc
@@ -329,22 +340,27 @@ all_module_remappings(Conf) ->
        end, [], Conf),
   lists:usort(Remappings).
 
-%% Given a configuration, returns all module remappings
+%% Given a configuration, returns all function remappings
 all_function_remappings(Conf) ->
   Remappings =
     dict:fold
       (fun (Key,Value,Acc) ->
 	   case Key of
-	     %% Module definition
+	     %% Function definition
 	     {Module,Fun,Arity} ->
-	       case lists:keysearch(translated_to,1,Value#info_rec.options) of
-		 {value,_} ->
-		   case remap_function(Module,Fun,Arity,Conf) of
-		     {Module,Fun,Arity} ->
-		       Acc;
-		     {NewModule,NewFun,NewArity} ->
-		       [{{Module,Fun,Arity},{NewModule,NewFun,NewArity}}|Acc]
-		   end;
+	       case get_function(Module,Fun,Arity,Conf) of
+		 {ok,FunInfo} ->
+		   Options = FunInfo#info_rec.options,
+		   TranslatedTo =
+		     proplists:get_value
+		       (translated_to,Options,{Module,Fun,Arity}),
+		   Snd =
+		     proplists:get_value(snd,Options,false),
+		   Rcv =
+		     proplists:get_value(rcv,Options,false),
+		   Locals =
+		     proplists:get_value(locals,Options,false),
+		   [{{Module,Fun,Arity},{TranslatedTo,Snd,Rcv,Locals}}|Acc];
 		 _ -> Acc
 	       end;
 	     _ -> Acc

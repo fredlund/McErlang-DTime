@@ -334,7 +334,7 @@ all_module_remappings(Conf) ->
 		   Rcv =
 		     proplists:get_value(rcv,Options,false),
 		   Locals =
-		     proplists:get_value(locals,Options,false),
+		     proplists:get_value(local,Options,false),
 		   [{Key,{TranslatedTo,Snd,Rcv,Locals}}|Acc];
 		 _ -> Acc
 	       end;
@@ -362,7 +362,7 @@ all_function_remappings(Conf) ->
 		   Rcv =
 		     proplists:get_value(rcv,Options,false),
 		   Locals =
-		     proplists:get_value(locals,Options,false),
+		     proplists:get_value(local,Options,false),
 		   [{{Module,Fun,Arity},{TranslatedTo,Snd,Rcv,Locals}}|Acc];
 		 _ -> Acc
 	       end;

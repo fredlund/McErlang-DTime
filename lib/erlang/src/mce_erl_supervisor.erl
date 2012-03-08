@@ -33,7 +33,7 @@
 
 -module(mce_erl_supervisor).
 
-%%-define(debug,true).
+-define(debug,true).
 
 -ifdef(debug).
 -define(LOG(X,Y), io:format("{~p,~p}: ~s~n", [?MODULE,?LINE,io_lib:format(X,Y)])).
@@ -42,7 +42,7 @@
 -endif.
 
 -export([start_link/2,start_link/3,doStart/3,doStart/4]).
--export([start_child/2]).
+-export([start_child/2,int_start_child/1]).
 
 start_link(Module, Arg) ->
   ?LOG("start_link(~p,~p)~n",[Module,Arg]),
@@ -64,48 +64,56 @@ doStart(Name, Module, Arg, SupervisorPid) ->
   ?LOG("~p: going to register name ~p for ~p~n",[?MODULE,Name,self()]),  
   register(Name, self()),
   Result = apply(Module, init, [Arg]),
+  ?LOG("start recipe: ~p~n",[Result]),
   startChildren(Result, SupervisorPid, Module).
 
 doStart(Module, Arg, SupervisorPid) ->
   process_flag(trap_exit,true),
   Result = apply(Module, init, [Arg]),
+  ?LOG("start recipe: ~p~n",[Result]),
   startChildren(Result, SupervisorPid, Module).
 
-loop(ModuleName) ->
+loop(ModuleName,Spec) ->
   receive
-    {no_match,of_anything} -> loop(ModuleName)
+    {start_child,ChildSpec} ->
+      ?LOG("got a request to start ~p~n",[ChildSpec]),
+      {{RestartStrategy,_,_},Children} = Spec,
+      if
+	RestartStrategy==simple_one_for_one ->
+	  Child = hd(Children),
+	  {_,{M,F,A},_,_,_,_} = Child,
+	  MFANew = {M,F,A++ChildSpec},
+	  int_start_child(setelement(2,Child,MFANew)),
+	  loop(ModuleName,Spec)
+      end
   end.
 
-startChildren({ok,{{one_for_one,_MaxR,_MaxT},Children}},SuperPid,ModuleName) ->
-  startCh(Children, SuperPid, ModuleName);
-startChildren({ok,{_,Children}}, SuperPid, ModuleName) ->
-  startCh(Children, SuperPid, ModuleName).
+startChildren({ok,Spec={{Strategy,_,_},Children}}, SuperPid, ModuleName) ->
+  if
+    Strategy==simple_one_for_one ->
+      SuperPid!{ok,started},
+      loop(ModuleName,Spec);
+    true ->
+      startChildren1(Children, SuperPid, ModuleName, Spec)
+  end.
 
-startCh([],SupervisorPid,ModuleName) ->  
+startChildren1([],SupervisorPid,ModuleName,Spec) ->
   SupervisorPid!{ok,started}, 
-  loop(ModuleName);
-%% Terminate is a special option to reduce the state space
-%% when the supervisor is just used to create the system and
-%% not monitor it; it can safely be ignored.
-startCh([terminate|_],_,ModuleName) ->
-  loop(ModuleName);
-startCh([ChildSpec|Rest],SupervisorPid,ModuleName) ->
-  {ok,_Child} = start_child(ChildSpec),
-  startCh(Rest,SupervisorPid,ModuleName).
+  loop(ModuleName,Spec);
+startChildren1([terminate|_],_,ModuleName,Spec) ->
+  loop(ModuleName,Spec);
+startChildren1([ChildSpec|Rest],SupervisorPid,ModuleName,Spec) ->
+  int_start_child(ChildSpec),
+  startChildren1(Rest,SupervisorPid,ModuleName,Spec).
 
-start_child(ChildSpec) ->
-  ?LOG("start_child(~p)~n",[ChildSpec]),
+int_start_child(ChildSpec) ->
+  ?LOG("int_start_child(~p)~n",[ChildSpec]),
   case ChildSpec of
-    {_Id,{Module,Fun,Args},temporary,_ShutDown,_Type,_Modules} ->
-      Result = {ok,_Child} = apply(Module,Fun,Args),
-      Result;
-    {_Id,{Module,Fun,Args},permanent,_ShutDown,_Type,_Modules} ->
+    {_Id,{Module,Fun,Args},_PT,_ShutDown,_Type,_Modules} ->
       Result = {ok,_Child} = apply(Module,Fun,Args),
       Result
   end.
 
-start_child(_SupRef,ChildSpec) ->
-  start_child(ChildSpec).
-
-  
+start_child(SupRef,ChildSpec) ->
+  SupRef!{start_child,ChildSpec}.
 

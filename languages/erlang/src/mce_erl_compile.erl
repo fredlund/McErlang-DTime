@@ -404,7 +404,6 @@ compile(CR) when is_record(CR, compile_rec) ->
 	      _ -> Acc
 	    end
 	end, [], AllTranslatedCores)},
-  io:format("modules are ~p~n",[NewCR#compile_rec.modules]),
   ?LOG("Beginning sef analysis~n", []),
   SefAnalysis =
     mce_erl_sef_analysis:analyze(AllTranslatedCores, NewCR),

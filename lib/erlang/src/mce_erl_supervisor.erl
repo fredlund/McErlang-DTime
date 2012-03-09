@@ -75,7 +75,7 @@ doStart(Module, Arg, SupervisorPid) ->
 
 loop(ModuleName,Spec) ->
   receive
-    {start_child,ChildSpec} ->
+    {start_child,{Pid,ChildSpec}} ->
       ?LOG("got a request to start ~p~n",[ChildSpec]),
       {{RestartStrategy,_,_},Children} = Spec,
       if
@@ -83,7 +83,8 @@ loop(ModuleName,Spec) ->
 	  Child = hd(Children),
 	  {_,{M,F,A},_,_,_,_} = Child,
 	  MFANew = {M,F,A++ChildSpec},
-	  int_start_child(setelement(2,Child,MFANew)),
+	  Result = int_start_child(setelement(2,Child,MFANew)),
+	  Pid!{child_started,Result},
 	  loop(ModuleName,Spec)
       end
   end.
@@ -111,9 +112,14 @@ int_start_child(ChildSpec) ->
   case ChildSpec of
     {_Id,{Module,Fun,Args},_PT,_ShutDown,_Type,_Modules} ->
       Result = {ok,_Child} = apply(Module,Fun,Args),
+
       Result
   end.
 
 start_child(SupRef,ChildSpec) ->
-  SupRef!{start_child,ChildSpec}.
+  SupRef!{start_child,{self(),ChildSpec}},
+  receive
+    {child_started,Result} -> Result
+  end.
+
 

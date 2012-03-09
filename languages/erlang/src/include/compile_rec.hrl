@@ -39,6 +39,7 @@
   includes=void,       %% Include directories (applied for all source files)
   lib_dict=void,       
   verbose=false,       %% Enable more diagnostic output
+  modules=[],
   compile_info=void,   
   unknown_is_snd=true, %% If a function is not known it is assumed to have a snd
   unknown_is_rcv=true, %% If a function is not known it is assumed to have a rcv

@@ -394,15 +394,26 @@ compile(CR) when is_record(CR, compile_rec) ->
 	       [{ModuleName, normalized, TranslatedCore}| Cores]
 	   end
        end, [], AllCores),
+  NewCR =
+    CR#compile_rec
+      {modules=
+       lists:foldl
+       (fun (Core,Acc) ->
+	    case Core of
+	      {ModuleName,_,_} -> [ModuleName|Acc];
+	      _ -> Acc
+	    end
+	end, [], AllTranslatedCores)},
+  io:format("modules are ~p~n",[NewCR#compile_rec.modules]),
   ?LOG("Beginning sef analysis~n", []),
   SefAnalysis =
-    mce_erl_sef_analysis:analyze(AllTranslatedCores, CR),
+    mce_erl_sef_analysis:analyze(AllTranslatedCores, NewCR),
   ?LOG("Translating receives...~n", []),
   mce_erl_coreTrans:compile
-    (AllTranslatedCores, CR#compile_rec{sef_analysis=SefAnalysis}),
-  OutputDir = CR#compile_rec.output_dir,
+    (AllTranslatedCores, NewCR#compile_rec{sef_analysis=SefAnalysis}),
+  OutputDir = NewCR#compile_rec.output_dir,
   GenFile = OutputDir++"/"++atom_to_list(?MCE_ERL_RUNTIME_COMPILE_DATA),
-  gen_compile_info_file(GenFile++".erl",CR),
+  gen_compile_info_file(GenFile++".erl",NewCR),
   {ok,_} = compile:file(GenFile,[{outdir,OutputDir}]).
 
 is_core_file(FileSpec) ->

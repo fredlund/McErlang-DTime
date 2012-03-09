@@ -32,7 +32,7 @@
 -module(mce_erl_sef_analysis).
 
 -export([analyze/2,has_sef/3]).
--export([call_has_snd_for_sure/2,call_has_local_for_sure/2]).
+-export([call_has_snd_for_sure/2,call_has_local_for_sure/2,is_known/2]).
 -export([module_calls/1,module_calls_modules/1]).
 
 %%-define(debug,true).
@@ -380,6 +380,16 @@ call_has_sef(Call = {Module, Function, Arity}, CR) ->
 	  ?LOG("Call ~p has information ~p~n", [Call, I]),
 	  check_for_direct_sef(I, CR)
       end
+  end.
+
+is_known(Call = {Module, Function, Arity}, CR) ->
+  case
+    mce_erl_compile_info:get_function
+    (Module, Function, Arity, CR#compile_rec.compile_info) of
+    error ->
+      lists:member(Module,CR#compile_rec.modules);
+    {ok,I} ->
+      true
   end.
 
 call_has_snd_for_sure(Call = {Module, Function, Arity}, CR) ->

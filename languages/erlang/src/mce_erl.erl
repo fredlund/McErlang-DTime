@@ -54,7 +54,7 @@
 	 match_context_inner/1,match_context/1]).
 -export([probe/1,probe/2,is_probe/1,probe_label/1,match_probe_label/1]).
 -export([callStack/1]).
--export([safe_call/4]).
+-export([safe_call/4,outside_call/4]).
 -export([void_state/1]).
 -export([compiled_with_mcerlang/1]).
 -export([mcerlang_compiled_caller/1]).
@@ -395,9 +395,13 @@ safe_call(Module,Name,Args,Arity) ->
 	    true -> erlang:apply(M,Name,Args)
 	  end;
 	[] ->
-	  erlang:apply(Module,Name,Args)
+	  outside_call(Module,Name,Args,Arity)
       end
   end.
+
+%% Another possibility is to warn here
+outside_call(Module,Name,Args,Arity) ->
+  erlang:apply(Module,Name,Args).
 
 %% @private
 void_state(State) ->

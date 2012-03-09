@@ -673,16 +673,36 @@ transform_receive(NF, C, Vars, CR) ->
     'call' ->
       Module = cerl:call_module(C),
       Name = cerl:call_name(C),
+      Arity = cerl:call_arity(C),
+      Args = cerl:call_args(C),
       case {cerl:is_c_atom(Module), cerl:is_c_atom(Name)} of
 	{true,true} ->
+	  ModuleAtom = cerl:atom_val(Module),
+	  NameAtom = cerl:atom_val(Name),
 	  case mce_erl_sef_analysis:call_has_snd_for_sure
-	    ({cerl:atom_val(Module),cerl:atom_val(Name),cerl:call_arity(C)},
-	     CR#cRrec.compileRec) of
+	    ({ModuleAtom,NameAtom,Arity},CR#cRrec.compileRec) of
 	    false -> 
 	      case mce_erl_sef_analysis:call_has_local_for_sure
-		({cerl:atom_val(Module),cerl:atom_val(Name),cerl:call_arity(C)},
-		 CR#cRrec.compileRec) of
-		false -> {C,[]};
+		({ModuleAtom,NameAtom,Arity},CR#cRrec.compileRec) of
+		false ->
+		  case
+		    mce_erl_sef_analysis:is_known
+		    ({ModuleAtom,NameAtom,Arity},CR#cRrec.compileRec) of
+		    true ->
+		      {C,[]};
+		    false ->
+		      OutsideCall =
+			copy_ann
+			  (C,
+			   cerl:c_call
+			   (cerl:c_atom(mce_erl),
+			    cerl:c_atom(outside_call),
+			    [Module,
+			     Name,
+			     c_list(Args),
+			     cerl:c_int(Arity)])),
+		      {OutsideCall,[]}
+		  end;
 		true ->
 		  LocalExpr =
 		    copy_ann
@@ -695,7 +715,7 @@ transform_receive(NF, C, Vars, CR) ->
 			       Name,
 			       cerl:c_int(cerl:call_arity(C))]),
 			   cerl:c_tuple
-			     ([Module,Name,c_list(cerl:call_args(C))])])),
+			     ([Module,Name,c_list(Args)])])),
 		  {LocalExpr,[]}
 	      end;
 	    true -> 
@@ -710,7 +730,7 @@ transform_receive(NF, C, Vars, CR) ->
 		       Name,
 		       cerl:c_int(cerl:call_arity(C))]),
 		     cerl:c_tuple
-		     ([Module,Name,c_list(cerl:call_args(C))])])),
+		     ([Module,Name,c_list(Args)])])),
 	       {SendExpr,[]}
 	  end;
 	_ ->
@@ -721,8 +741,7 @@ transform_receive(NF, C, Vars, CR) ->
 	       cerl:c_call
 		 (cerl:c_atom(mce_erl),
 		  cerl:c_atom(safe_call),
-		  [Module,Name,c_list(cerl:call_args(C)),
-		   cerl:c_int(length(cerl:call_args(C)))])),
+		  [Module,Name,c_list(Args),cerl:c_int(Arity)])),
 	  {IndirectCall,[]}
       end;
     'fun' ->

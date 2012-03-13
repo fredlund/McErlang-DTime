@@ -33,7 +33,7 @@
 
 -module(mce_erl_supervisor).
 
-%%-define(debug,true).
+-define(debug,true).
 
 -ifdef(debug).
 -define(LOG(X,Y), io:format("{~p,~p}: ~s~n", [?MODULE,?LINE,io_lib:format(X,Y)])).
@@ -56,22 +56,32 @@ start_link({local,Name}, Module, Arg) ->
 
 waitForStart(Pid) ->
   receive
-    {ok,started} -> {ok, Pid}
+    {ok,started} -> {ok, Pid};
+    {error,Reason} -> {error,Reason}
   end.
 
 doStart(Name, Module, Arg, SupervisorPid) ->
   process_flag(trap_exit,true),
   ?LOG("~p: going to register name ~p for ~p~n",[?MODULE,Name,self()]),  
-  register(Name, self()),
-  Result = apply(Module, init, [Arg]),
-  ?LOG("start recipe: ~p~n",[Result]),
-  startChildren(Result, SupervisorPid, Module).
+  try register(Name, self()) of
+    true -> starting(Module,Arg,SupervisorPid)
+  catch error:badarg ->
+      Pid = whereis(Name),
+      SupervisorPid!{error,{already_started,Pid}}
+  end.
 
 doStart(Module, Arg, SupervisorPid) ->
   process_flag(trap_exit,true),
-  Result = apply(Module, init, [Arg]),
-  ?LOG("start recipe: ~p~n",[Result]),
-  startChildren(Result, SupervisorPid, Module).
+  starting(Module, Arg, SupervisorPid).
+
+starting(Module,Arg,SupervisorPid) ->
+  try apply(Module, init, [Arg]) of
+    Result -> 
+      try 
+	?LOG("start recipe: ~p~n",[Result]),
+	startChildren(Result, SupervisorPid, Module)
+      catch Error1:Reason1 -> SupervisorPid!{error,shutdown} end
+  catch Error:Reason -> SupervisorPid!{error,Reason} end.
 
 loop(ModuleName,Spec) ->
   receive
@@ -111,8 +121,8 @@ int_start_child(ChildSpec) ->
   ?LOG("int_start_child(~p)~n",[ChildSpec]),
   case ChildSpec of
     {_Id,{Module,Fun,Args},_PT,_ShutDown,_Type,_Modules} ->
-      Result = {ok,_Child} = apply(Module,Fun,Args),
-
+      Result = apply(Module,Fun,Args),
+      ?LOG("result of apply(~p,~p,~p) is ~p~n",[Module,Fun,Args,Result]),
       Result
   end.
 

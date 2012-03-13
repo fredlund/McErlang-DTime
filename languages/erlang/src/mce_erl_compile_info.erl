@@ -157,8 +157,10 @@ get_function(ModuleName,FunctionName,Arity,Conf) ->
   ?LOG("Function=~p~n",[Function]),
   ModuleInherits = 
     case Module of
-      {ok,I} -> I#info_rec.inherits;
-      _ -> []
+      {ok,I} ->
+	I#info_rec.inherits--[ModuleName];
+      _ ->
+	[]
     end,
   merge_infos
     ([Module]++

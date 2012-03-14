@@ -145,14 +145,14 @@ output(CoreCode,File) ->
       ok = file:write_file(FileName,Bin);
     error ->
       io:format
-	("*** Error: unable to generate beam code from HiPE for ~s~n",
+	("*** Error: unable to generate beam code from HiPE Core Erlang for ~s~n",
 	 [FileName]),
       io:format("Core code:~n"),
       io:format("~s~n",[core_pp:format(CoreCode)]),
       throw(compile);
     {error,Errors,_Warnings} ->
       io:format
-	("*** Error: unable to generate beam code from HiPE for ~s~n",
+	("*** Error: unable to generate beam code from HiPE Core Erlang for ~s~n",
 	 [FileName]),
       [{_FileName,[ErrorInfo]}] = Errors,
       {_ErrorLine,Module,ErrorDescriptor} = ErrorInfo,
@@ -382,15 +382,11 @@ c_is_pid(X) ->
   V1 = genVar(),
   V2 = genVar(),
   V3 = genVar(),
-  cerl:c_try
+  normalize_expr
     (c_and(c_is_tuple(X),
 	   c_and(c_eq(c_size(X),cerl:c_int(3)),
 		 c_and(c_eq(c_element(cerl:c_int(1),X),cerl:c_atom(pid)),
-		       c_is_integer(c_element(cerl:c_int(3),X))))),
-     [V1],
-     V1,
-     [V2,V3],
-     cerl:c_atom(false)).
+		       c_is_integer(c_element(cerl:c_int(3),X)))))).
 
 c_and(X,Y) ->
   cerl:c_call(cerl:c_atom(erlang),cerl:c_atom('and'),[X,Y]).

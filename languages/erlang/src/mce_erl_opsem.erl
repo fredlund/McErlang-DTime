@@ -264,7 +264,7 @@ timeout_separate(Now,Transitions,Conf) ->
 	   {exec,Exec} ->
 	     P = Exec#executable.process,
 	     MaxWait = 
-	       case is_urgent(Now,P#process.expr,Conf) of
+	       case is_urgent(Now,P#process.status,P#process.expr,Conf) of
 		 false ->
 		   infinity;
 		 {true,MW} ->
@@ -559,7 +559,7 @@ timeRestrict(State, Possibilities, Conf) ->
 		   _ -> Now
 		 end,
 	       MaxWait1 = 
-		 case is_urgent(Now,Process#process.expr,Conf) of
+		 case is_urgent(Now,Process#process.status,Process#process.expr,Conf) of
 		   false -> infinity;
 		   {true,MaxWait2} -> MaxWait2
 		 end,
@@ -634,11 +634,12 @@ getFirstProcessToFire(Entries) ->
 remove_timed_transitions(MaxWait,Entries) ->
   lists:filter(fun (Entry={MinWait,_,_}) -> compareTimes_ge(MaxWait,MinWait) end, Entries).
 
-is_urgent(Now,Expr,Conf) ->
+is_urgent(Now,Status,Expr,Conf) ->
   IsInfinitelyFast = Conf#mce_opts.is_infinitely_fast,
+  IsTimed = case Status of {timer,_} -> true; _ -> false end,
   UrgentInfo={HasUrgentTag,MaxWait} =
     case Expr of
-      {?CONTEXTTAG,{_,Context}} ->
+      {?CONTEXTTAG,{InnerExpr,Context}} ->
 	check_context_for_urgency_tag(Context);
       _ ->
 	{false,void}
@@ -646,7 +647,7 @@ is_urgent(Now,Expr,Conf) ->
   ?LOG("is_urgent: Expr ~p has tag ~p~n",[Expr,UrgentInfo]),
   if 
     HasUrgentTag -> UrgentInfo;
-    IsInfinitelyFast -> {true,Now};
+    IsInfinitelyFast, not(IsTimed) -> {true,Now};
     true -> false
   end.
 
@@ -654,7 +655,7 @@ check_context_for_urgency_tag(Context) ->
   case Context of
     [{?URGENTTAG,MaxWait}|_] ->
       {true,MaxWait};
-    [{?WASCHOICETAG,_}|RestContext] -> 
+    [_|RestContext] -> 
       check_context_for_urgency_tag(RestContext);
     _ ->
       {false,void}
@@ -1241,7 +1242,7 @@ putProcess(P, Exec, State, Conf) ->
 		    NewDeadline = 
 		      addTimeStamps
 			(milliSecondsToTimeStamp(Time),State#system.time),
-		    NewDeadline;
+		    {NewDeadline,Exec};
 		  {true,_} ->
 		    {addTimeStamps(milliSecondsToTimeStamp(Time),erlang:now()),
 		     Exec};

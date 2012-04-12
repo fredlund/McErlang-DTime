@@ -83,12 +83,21 @@ tryValue(Value, BodyCont, HandlerCont) ->
 tryHandler(Value,HandlerCont) ->
   apply_value(HandlerCont,Value).
 
-apply_value(Cont,Value) ->
+apply_value(Cont,RawValue) ->
+  Value = get_value(RawValue),
   case Cont of
     {Module,Fun,Args} ->
       apply(Module,Fun,[Value|Args]);
     {Fun,Args} ->
       apply(Fun,[Value|Args])
+  end.
+
+get_value(Value) ->
+  case Value of
+    {?URGENTTAG,{_,Expr}} ->
+      get_value(Expr);
+    _ ->
+      Value
   end.
 
 parseStack(Context,Time) ->
@@ -154,7 +163,7 @@ execStack(Command,OtherTag) ->
      [OtherTag,Command]),
   throw(bad).
   
-isTagged({MaybeTag,_}) ->
+isTagged({MaybeTag,Arg}) ->
   case MaybeTag of
     ?TRYTAG -> true;
     ?LETTAG -> true;
@@ -163,7 +172,10 @@ isTagged({MaybeTag,_}) ->
     ?SENDTAG -> true;
     ?EXITINGTAG -> true;
     ?RECVTAG -> true;
-    ?URGENTTAG -> true;
+    ?URGENTTAG -> 
+      case Arg of
+	{_,Expr} -> isTagged(Expr)
+      end;
     ?SYNCHTAG -> true;
     _ -> false
   end;
